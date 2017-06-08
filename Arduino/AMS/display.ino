@@ -23,7 +23,7 @@ void manualSettings(){
   boolean startRec = 0, startUp, startDown;
   readEEPROM();
 
-  autoStartTime = getTeensy3Time();
+  autoStartTime = Teensy3Clock.get();
 // get free space on cards
     cDisplay();
     display.print("LS1 Init");
@@ -105,7 +105,7 @@ void manualSettings(){
 
     cDisplay();
 
-    t = getTeensy3Time();
+    t = Teensy3Clock.get();
 
     if (t - autoStartTime > 600) startRec = 1; //autostart if no activity for 10 minutes
     switch (curSetting){
@@ -113,7 +113,7 @@ void manualSettings(){
         if (settingsChanged) {
           writeEEPROM();
           settingsChanged = 0;
-          autoStartTime = getTeensy3Time();  //reset autoStartTime
+          autoStartTime = Teensy3Clock.get();  //reset autoStartTime
         }
         display.print("UP+DN->Rec"); 
         
@@ -146,42 +146,42 @@ void manualSettings(){
         newYear = updateVal(oldYear,2000, 2100);
         if(oldYear!=newYear) setTeensyTime(hour(t), minute(t), second(t), day(t), month(t), newYear);
         display.print("Year:");
-        display.print(year(getTeensy3Time()));
+        display.print(year(Teensy3Clock.get()));
         break;
       case setMonth:
         oldMonth = month(t);
         newMonth = updateVal(oldMonth, 1, 12);
         if(oldMonth != newMonth) setTeensyTime(hour(t), minute(t), second(t), day(t), newMonth, year(t));
         display.print("Month:");
-        display.print(month(getTeensy3Time()));
+        display.print(month(Teensy3Clock.get()));
         break;
       case setDay:
         oldDay = day(t);
         newDay = updateVal(oldDay, 1, 31);
         if(oldDay!=newDay) setTeensyTime(hour(t), minute(t), second(t), newDay, month(t), year(t));
         display.print("Day:");
-        display.print(day(getTeensy3Time()));
+        display.print(day(Teensy3Clock.get()));
         break;
       case setHour:
         oldHour = hour(t);
         newHour = updateVal(oldHour, 0, 23);
         if(oldHour!=newHour) setTeensyTime(newHour, minute(t), second(t), day(t), month(t), year(t));
         display.print("Hour:");
-        display.print(hour(getTeensy3Time()));
+        display.print(hour(Teensy3Clock.get()));
         break;
       case setMinute:
         oldMinute = minute(t);
         newMinute = updateVal(oldMinute, 0, 59);
         if(oldMinute!=newMinute) setTeensyTime(hour(t), newMinute, second(t), day(t), month(t), year(t));
         display.print("Minute:");
-        display.print(minute(getTeensy3Time()));
+        display.print(minute(Teensy3Clock.get()));
         break;
       case setSecond:
         oldSecond = second(t);
         newSecond = updateVal(oldSecond, 0, 59);
         if(oldSecond!=newSecond) setTeensyTime(hour(t), minute(t), newSecond, day(t), month(t), year(t));
         display.print("Second:");
-        display.print(second(getTeensy3Time()));
+        display.print(second(Teensy3Clock.get()));
         break;  
       case setMode:
         display.print("Mode:");
@@ -215,7 +215,7 @@ void manualSettings(){
         break;
     }
     displaySettings();
-    displayClock(getTeensy3Time(), BOTTOM, 1);
+    displayClock(Teensy3Clock.get(), BOTTOM, 1);
     display.display();
     delay(200);
   }
@@ -232,7 +232,7 @@ void setTeensyTime(int hr, int mn, int sc, int dy, int mh, int yr){
   time_t newtime;
   newtime = makeTime(tm); 
   Teensy3Clock.set(newtime); 
-  autoStartTime = getTeensy3Time();
+  autoStartTime = Teensy3Clock.get();
 }
   
 int updateVal(long curVal, long minVal, long maxVal){
@@ -278,8 +278,7 @@ void cDisplay(){
 }
 
 void displaySettings(){
-  //t = Teensy3Clock.get();
-  t = getTeensy3Time();
+  t = Teensy3Clock.get();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 18);
@@ -351,14 +350,14 @@ void displaySettings(){
 
   float totalSecondsMemory = totalRecSeconds / recFraction;
   if(powerSeconds < totalSecondsMemory){
-   // displayClock(getTeensy3Time() + powerSeconds, 45, 0);
+   // displayClock(Teensy3Clock.get() + powerSeconds, 45, 0);
     display.setCursor(0, 48);
     display.print("Battery Limit:");
     display.print(powerSeconds / 86400);
     display.print("d");
   }
   else{
-  //  displayClock(getTeensy3Time() + totalRecSeconds + totalSleepSeconds, 45, 0);
+  //  displayClock(Teensy3Clock.get() + totalRecSeconds + totalSleepSeconds, 45, 0);
     display.setCursor(0, 48);
     display.print("Memory Limit:");
     display.print(totalSecondsMemory / 86400);

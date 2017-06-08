@@ -263,8 +263,9 @@ void setup() {
 
   delay(500);    
 
-  setSyncProvider(getTeensy3Time); //use Teensy RTC to keep time
-  t = getTeensy3Time();
+  setSyncProvider(getTeensy3Time); //get RTC from Particle cell when available
+
+  t = Teensy3Clock.get();
   if (t < 1451606400) Teensy3Clock.set(1451606400);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
@@ -292,8 +293,8 @@ void setup() {
   
   cDisplay();
   
-  t = getTeensy3Time();
-  startTime = getTeensy3Time();
+  t = Teensy3Clock.get();
+  startTime = t;
   startTime -= startTime % roundSeconds;  
   startTime += roundSeconds; //move forward
   stopTime = startTime + rec_dur;  // this will be set on start of recording
@@ -350,7 +351,7 @@ void loop() {
   // Standby mode
   if(mode == 0)
   {
-      t = getTeensy3Time();
+      t = Teensy3Clock.get();
       cDisplay();
       display.println("Next Start");
       display.setTextSize(1);
@@ -376,7 +377,7 @@ void loop() {
         if (recMode==MODE_DIEL) checkDielTime();
 
         Serial.print("Current Time: ");
-        printTime(getTeensy3Time());
+        printTime(Teensy3Clock.get());
         Serial.print("Stop Time: ");
         printTime(stopTime);
         Serial.print("Next Start:");
@@ -458,7 +459,7 @@ void loop() {
       recLoopCount++;
       if(recLoopCount>50){
         recLoopCount = 0;
-        t = getTeensy3Time();
+        t = Teensy3Clock.get();
         cDisplay();
         if(rec_int > 0) {
           display.println("Rec");
@@ -490,7 +491,7 @@ void loop() {
         checkSD();
         if(fftFlag) resetSignals();
         
-        long ss = startTime - getTeensy3Time() - wakeahead;
+        long ss = startTime - Teensy3Clock.get() - wakeahead;
         if (ss<0) ss=0;
         snooze_hour = floor(ss/3600);
         ss -= snooze_hour * 3600;
@@ -587,7 +588,7 @@ void stopRecording() {
 
 void FileInit()
 {
-   t = getTeensy3Time();
+   t = Teensy3Clock.get();
    
    if ((folderMonth != month(t)) | newCard){
     newCard = 0;
@@ -730,7 +731,7 @@ void checkSD(){
 //This function returns the date and time for SD card file access and modify time. One needs to call in setup() to register this callback function: SdFile::dateTimeCallback(file_date_time);
 void file_date_time(uint16_t* date, uint16_t* time) 
 {
-  t = getTeensy3Time();
+  t = Teensy3Clock.get();
   *date=FAT_DATE(year(t),month(t),day(t));
   *time=FAT_TIME(hour(t),minute(t),second(t));
 }
@@ -787,6 +788,27 @@ void AudioInit(){
 
 time_t getTeensy3Time()
 {
+  // request time from cell
+  unsigned char dtr;
+  int rd, wr, n;
+  char buffer[20];
+  time_t particleTime;
+
+  HWSERIAL.write('t'); // command to request time
+  delay(2);
+  // check if any data has arrived on the hardware serial port
+  while(HWSERIAL.available()){
+        // read data from the hardware serial port
+        buffer[n] = HWSERIAL.readBytes((char *)buffer, 1);
+        n++;
+  }
+  particleTime = atoi(buffer);
+  if(printDiags){
+    SerialUSB.println("Time sync");
+    SerialUSB.print("Particle: ");
+    SerialUSB.println(particleTime);
+  }
+  if (n==10) return particleTime;
   return Teensy3Clock.get();
 }
 
@@ -915,7 +937,7 @@ void checkDielTime(){
        startTime = makeTime(tmStart);
        Serial.print("New diel start:");
        printTime(startTime);
-       if(startTime < getTeensy3Time()) startTime += SECS_PER_DAY;  // make sure after current time
+       if(startTime < Teensy3Clock.get()) startTime += SECS_PER_DAY;  // make sure after current time
        Serial.print("New diel start:");
        printTime(startTime);
        }
@@ -929,7 +951,7 @@ void checkDielTime(){
        startTime = makeTime(tmStart);
        Serial.print("New diel start:");
        printTime(startTime);
-       if(startTime < getTeensy3Time()) startTime += SECS_PER_DAY;  // make sure after current time
+       if(startTime < Teensy3Clock.get()) startTime += SECS_PER_DAY;  // make sure after current time
        Serial.print("New diel start:");
        printTime(startTime);
     }
