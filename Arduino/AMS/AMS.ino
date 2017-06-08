@@ -39,8 +39,8 @@ Adafruit_SSD1306 display(OLED_RESET);
 //
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
-long rec_dur = 30;
-long rec_int = 10;
+long rec_dur = 300;
+long rec_int = 0;
 int fftFlag = 1;
 int roundSeconds = 60;//modulo to nearest x seconds
 float hydroCal = -180.0;
@@ -263,10 +263,10 @@ void setup() {
 
   delay(500);    
 
-  setSyncProvider(getTeensy3Time); //get RTC from Particle cell when available
-
+  setSyncProvider(getParticleTime); //get RTC from Particle cell when available
+  SerialUSB.print("Time status: ");
+  SerialUSB.println(timeStatus());
   t = Teensy3Clock.get();
-  if (t < 1451606400) Teensy3Clock.set(1451606400);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
   delay(100);
@@ -786,37 +786,41 @@ void AudioInit(){
   }
 }
 
-time_t getTeensy3Time()
+time_t getParticleTime()
 {
   // request time from cell
   unsigned char dtr;
   int rd, wr, n;
-  char buffer[20];
+  char buffer[12];
   time_t particleTime;
 
-  HWSERIAL.write('t'); // command to request time
-  delay(2);
+  if(printDiags) SerialUSB.println("Time sync");
+  
+  HWSERIAL.write("t"); // command to request time
+  HWSERIAL.flush();
+
   // check if any data has arrived on the hardware serial port
-  while(HWSERIAL.available()){
-        // read data from the hardware serial port
-        buffer[n] = HWSERIAL.readBytes((char *)buffer, 1);
-        n++;
+  // time out if don't get expected number of bytes within timeout
+  int timeTimeOut = 100;
+  startTime = millis();
+  while((millis()-startTime) < timeTimeOut){
+    if(HWSERIAL.available()==10){
+          // read data from the hardware serial port
+          n = HWSERIAL.readBytes((char *)buffer, 10);  
+          particleTime = atoi(buffer);
+          
+          if(printDiags){    
+            SerialUSB.print("elapsed (ms):");
+            SerialUSB.println(millis()-startTime);
+            SerialUSB.print("Particle: ");
+            SerialUSB.println(particleTime);
+          }
+          return particleTime;
+    }
   }
-  particleTime = atoi(buffer);
-  if(printDiags){
-    SerialUSB.println("Time sync");
-    SerialUSB.print("Particle: ");
-    SerialUSB.println(particleTime);
-  }
-  if (n==10) return particleTime;
-  return Teensy3Clock.get();
+  return 0; // unable to get Particle time
 }
 
-unsigned long processSyncMessage() {
-  unsigned long pctime = 0L;
-  const unsigned long DEFAULT_TIME = 1451606400; // Jan 1 2016
-} 
-  
 // Calculates Accurate UNIX Time Based on RTC Timestamp
 unsigned long RTCToUNIXTime(TIME_HEAD *tm){
     int i;
