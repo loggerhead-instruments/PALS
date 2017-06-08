@@ -145,7 +145,7 @@ float mAmpCam = 600;
 float mAhTotal = 12000 * 4; // assume 12Ah per battery pack
 
 long file_count;
-char filename[25];
+char filename[255];
 char dirname[7];
 int folderMonth;
 //SnoozeBlock snooze_config;
@@ -601,7 +601,9 @@ void FileInit()
 
    // get new filename
    int filenameIncrement = 0;
-   sprintf(filename,"%s/%02d%02d%02d%02d.wav", dirname, day(t), hour(t), minute(t), second(t));  //filename is DDHHMM
+   sprintf(filename,"%s/%02d-%02d-%02dT%02d%02d%02d_%02x%02x%02x%02x%02x%02x%02x%02x.wav", dirname, year(t), month(t), day(t), hour(t), minute(t), second(t),
+          myID[0], myID[1], myID[2], myID[3], myID[4], myID[5], myID[6], myID[7]);  //filename is DDHHMM
+   if(printDiags) Serial.println(filename);
    while (sd.exists(filename)){
     filenameIncrement++;
     sprintf(filename,"%s/%02d%02d%02d%02d_%d.wav", dirname, day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
@@ -614,10 +616,6 @@ void FileInit()
    File logFile;
    if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
       logFile.print(filename);
-      logFile.print(',');
-      for(int n=0; n<8; n++){
-        logFile.print(myID[n]);
-      }
       if(fftFlag){
         for (int i=0; i<4; i++){
           logFile.print(',');
@@ -631,7 +629,7 @@ void FileInit()
            }
         }
         logFile.print(',');
-        logFile.println(whistleCount); 
+        logFile.print(whistleCount); 
       }
       logFile.print(',');
       logFile.print(gainSetting); 
