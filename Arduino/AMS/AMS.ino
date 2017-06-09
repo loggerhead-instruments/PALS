@@ -42,14 +42,14 @@ int camFlag = 0;
 long rec_dur = 300;
 long rec_int = 0;
 int fftFlag = 1;
-int roundSeconds = 300;//modulo to nearest x seconds
+int roundSeconds = 60;//modulo to nearest x seconds
 float hydroCal = -180.0;
 int wakeahead = 20;  //wake from snooze to give hydrophone and camera time to power up
 //
 //***********************************************************
 
 static uint8_t myID[8];
-char myIdHex[18];
+char myIdHex[20];
 unsigned long baud = 115200;
 
 #define SECONDS_IN_MINUTE 60
@@ -95,6 +95,8 @@ boolean newCard = 0;
 
 SdFat sd;
 SdFile file;
+char filename[100];
+char dirname[10];
 
 // Pins used by audio shield
 // https://www.pjrc.com/store/teensy3_audio.html
@@ -125,7 +127,7 @@ boolean CAMON = 0;
 boolean audioFlag = 1;
 
 boolean LEDSON=1;
-boolean introperiod=1;  //flag for introductory period; used for keeping LED on for a little while
+boolean introPeriod=1;  //flag for introductory period; used for writing FFT info to log
 
 float audio_srate = 44100.0;
 
@@ -147,8 +149,7 @@ float mAmpCam = 600;
 float mAhTotal = 12000 * 4; // assume 12Ah per battery pack
 
 long file_count;
-char filename[255];
-char dirname[7];
+
 int folderMonth;
 //SnoozeBlock snooze_config;
 SnoozeAlarm alarm;
@@ -184,7 +185,7 @@ int fftPoints = 256; // 5.8 ms at 44.1 kHz
 float binwidth = audio_srate / fftPoints; //256 point FFT; = 172.3 Hz for 44.1kHz
 float fftDurationMs = 1000.0 / binwidth;
 long fftCount;
-float meanBand[4]; // mean band values
+float meanBand[4]; // mean band valuesd
 int bandLow[4]; // band low frequencies
 int bandHigh[4];
 int nBins[4]; // number of FFT bins in each band
@@ -264,8 +265,6 @@ void setup() {
   digitalWrite(SELECT, HIGH);
 
   delay(500);    
-
-
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
   delay(100);
 
@@ -350,7 +349,8 @@ void setup() {
 
   // create first folder to hold data
   folderMonth = -1;  //set to -1 so when first file made will create directory
-  logFileHeader(); //write header to log file
+  //logFileHeader(); //write header to log file
+  HWSERIAL.clear();
 }
 
 //
@@ -463,7 +463,8 @@ void loop() {
         startTime = stopTime;
         stopTime = startTime + rec_dur;
         frec.close();
-        updateLog();
+        introPeriod = 0;
+       
         if(printDiags) {
           Serial.print("Buffers rec:");
           Serial.println(buf_count);
@@ -477,6 +478,7 @@ void loop() {
     else{
       if((buf_count >= nbufs_per_file)){       // time to stop for interval recording?
         if(fftFlag) summarizeSignals();
+          introPeriod = 0;
           stopRecording();
           checkSD();
           if(fftFlag) resetSignals();
@@ -574,12 +576,10 @@ void stopRecording() {
   AudioMemoryUsageMaxReset();
   //frec.timestamp(T_WRITE,(uint16_t) year(t),month(t),day(t),hour(t),minute(t),second);
   frec.close();
-  updateLog();
 }
 
 void FileInit(){
-   //getParticleTime();
-   File logFile;
+  // File logFile;
    t = Teensy3Clock.get();
    
    if ((folderMonth != month(t)) | newCard){
@@ -594,48 +594,75 @@ void FileInit(){
 
    // get new filename
    int filenameIncrement = 0;
-   sprintf(filename,"%s/%02d-%02d-%02dT%02d%02d%02d_%02x%02x%02x%02x%02x%02x%02x%02x.wav", dirname, year(t), month(t), day(t), hour(t), minute(t), second(t),
-          myID[0], myID[1], myID[2], myID[3], myID[4], myID[5], myID[6], myID[7]);  //filename is DDHHMM
+   // long filename
+   sprintf(filename,"%s/%02d-%02d-%02dT%02d%02d%02d_%s_%2.1f.wav", dirname, year(t), month(t), day(t), hour(t), minute(t), second(t), myIdHex, gainDb);  //filename is DDHHMM
+   while (sd.exists(filename)){
+    filenameIncrement++;
+    sprintf(filename,"%s/%02d%02d%02d%02d_%d.wav", dirname, day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
+   }
+   // short filename
+   //sprintf(filename,"%s/%02d%02d%02d%02d.wav", dirname, day(t), hour(t), minute(t), second(t));  //filename is DDHHMM
    if(printDiags) Serial.println(filename);
-
-   // log file
-   //SdFile::dateTimeCallback(file_date_time);
-  float voltage = readVoltage();
-  if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-      //logFile.print(filename);
-      logFile.print(year(t)); logFile.print("-");
-      logFile.print(month(t)); logFile.print("-");
-      logFile.print(day(t)); logFile.print("T");
-      logFile.print(hour(t)); logFile.print(":");
-      logFile.print(minute(t)); logFile.print(":");
-      logFile.print(second(t));
+  /*
+   float voltage = readVoltage();
+   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+    if((introPeriod==0) & (fftFlag==1)){
+        for (int i=0; i<4; i++){
+          logFile.print(',');
+          if(meanBand[i]>0.00001){
+            float spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
+            spectrumLevel = spectrumLevel - hydroCal - gainDb;
+            logFile.print(spectrumLevel);
+          }
+           else{
+            logFile.print("-100");
+           }
+        }
+        logFile.print(',');
+        logFile.println(whistleCount); 
+      }
+      logFile.print(filename);
       logFile.print(',');
-      logFile.print(myIdHex);
+      for(int n=0; n<8; n++){
+        logFile.print(myID[n]);
+      }
       logFile.print(',');
-      logFile.print(gainSetting); 
+      logFile.print(gainDb); 
       logFile.print(',');
       logFile.print(voltage); 
-      if(fftFlag==0) logFile.println();
+      if(voltage < 3.0){
+        logFile.println("Stopping because Voltage less than 3.0 V");
+        logFile.close();  
+        // low voltage hang but keep checking voltage
+        while(readVoltage() < 3.0){
+            delay(30000);
+        }
+      }
+      if(fftFlag==1) {
+        logFile.println();
+      }
       logFile.close();
-      if(printDiags) Serial.println("Log updated");
    }
    else{
-    if(printDiags) Serial.print("Log open fail");
+    if(printDiags) Serial.print("Log open fail.");
     // resetFunc();
    }
-   
+   */
    frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
-   if(printDiags) Serial.println("file opened");
+   if(printDiags) {
+    Serial.print("file opened: ");
+    Serial.println(frec);
+   }
    
    while (!frec){
     file_count += 1;
     sprintf(filename,"F%06d.wav",file_count); //if can't open just use count in root directory
-    logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE);
-    logFile.print("File open failed. Retry: ");
-    logFile.println(filename);
-    logFile.close();
+    if(printDiags) Serial.println(filename);
+//    logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE);
+//    logFile.print("File open failed. Retry: ");
+//    logFile.println(filename);
+//    logFile.close();
     frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
-    Serial.println(filename);
     if(file_count>1000) {
         currentCard += 1; // try next card after many tries
         if(currentCard==4) resetFunc(); // try starting all over
@@ -645,42 +672,52 @@ void FileInit(){
       }
    }
 
-    //intialize .wav file header
-    sprintf(wav_hdr.rId,"RIFF");
-    wav_hdr.rLen=36;
-    sprintf(wav_hdr.wId,"WAVE");
-    sprintf(wav_hdr.fId,"fmt ");
-    wav_hdr.fLen=0x10;
-    wav_hdr.nFormatTag=1;
-    wav_hdr.nChannels=1;
-    wav_hdr.nSamplesPerSec=audio_srate;
-    wav_hdr.nAvgBytesPerSec=audio_srate*2;
-    wav_hdr.nBlockAlign=2;
-    wav_hdr.nBitsPerSamples=16;
-    sprintf(wav_hdr.dId,"data");
-    wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
-    wav_hdr.dLen = nbufs_per_file * 256 * 2;
-  
-    frec.write((uint8_t *)&wav_hdr, 44);
+  //intialize .wav file header
+  sprintf(wav_hdr.rId,"RIFF");
+  wav_hdr.rLen=36;
+  sprintf(wav_hdr.wId,"WAVE");
+  sprintf(wav_hdr.fId,"fmt ");
+  wav_hdr.fLen=0x10;
+  wav_hdr.nFormatTag=1;
+  wav_hdr.nChannels=1;
+  wav_hdr.nSamplesPerSec=audio_srate;
+  wav_hdr.nAvgBytesPerSec=audio_srate*2;
+  wav_hdr.nBlockAlign=2;
+  wav_hdr.nBitsPerSamples=16;
+  sprintf(wav_hdr.dId,"data");
+  wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
+  wav_hdr.dLen = nbufs_per_file * 256 * 2;
+
+  frec.write((uint8_t *)&wav_hdr, 44);
 
   Serial.print("Buffers: ");
   Serial.println(nbufs_per_file);
 }
 
 void logFileHeader(){
-  if(printDiags) Serial.print("Log file header");
+  if(printDiags) Serial.print("Log file header: ");
   File logFile;
   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+   Serial.print("-");
+    logFile.print("filename");
+   Serial.print("-");
+    logFile.print(",");
     logFile.print("datetime");
+   Serial.print("-");
     logFile.print(",");
     logFile.print("ID");
+   Serial.print("-");
     logFile.print(",");
     logFile.print("gain");
+   Serial.print("-");
     logFile.print(",");
     logFile.print("batteryV");
+   Serial.print("-");
     logFile.print(",");
+   Serial.print("-");
     if(fftFlag){
       for (int i=0; i<4; i++){
+        Serial.print("-");
         logFile.print(bandLow[i]*binwidth);
         logFile.print("-");
         logFile.print(bandHigh[i]*binwidth);
@@ -689,38 +726,12 @@ void logFileHeader(){
       logFile.println("whistles");
     }
     logFile.close();
+    if(printDiags) Serial.println("Done");
   }
-}
-
-void updateLog(){
-   // update log file with data processing from last file
-   File logFile;
-   float spectrumLevel;
-   if(printDiags) Serial.println("Log file acoustic data");
-   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-      if(fftFlag){
-        for (int i=0; i<4; i++){
-          logFile.print(',');
-          if(meanBand[i]>0.00001){
-            spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
-            spectrumLevel = spectrumLevel - hydroCal - gainDb;
-            logFile.print(spectrumLevel);
-          }
-           else{
-            spectrumLevel = -100 - (10 * log10(binwidth));
-            spectrumLevel = spectrumLevel - hydroCal - gainDb;
-            logFile.print(spectrumLevel);
-           }
-        }
-        logFile.print(',');
-        logFile.println(whistleCount); 
-      }
-      logFile.close();
-   }
-   else{
-    if(printDiags) Serial.print("Log open fail.");
-    // resetFunc();
-   }
+  else{
+    if(printDiags) Serial.println("Fail");
+  }
+  
 }
 
 void checkSD(){
@@ -797,22 +808,26 @@ void AudioInit(){
   //sgtl5000_1.autoVolumeDisable();
  // sgtl5000_1.audioProcessorDisable();
   switch(gainSetting){
-    case 0: gainDb = -20 * log10(3.12 / 2.0);
-    case 1: gainDb = -20 * log10(2.63 / 2.0);
-    case 2: gainDb = -20 * log10(2.22 / 2.0);
-    case 3: gainDb = -20 * log10(1.87 / 2.0);
-    case 4: gainDb = -20 * log10(1.58 / 2.0);
-    case 5: gainDb = -20 * log10(1.33 / 2.0);
-    case 6: gainDb = -20 * log10(1.11 / 2.0);
-    case 7: gainDb = -20 * log10(0.94 / 2.0);
-    case 8: gainDb = -20 * log10(0.79 / 2.0);
-    case 9: gainDb = -20 * log10(0.67 / 2.0);
-    case 10: gainDb = -20 * log10(0.56 / 2.0);
-    case 11: gainDb = -20 * log10(0.48 / 2.0);
-    case 12: gainDb = -20 * log10(0.40 / 2.0);
-    case 13: gainDb = -20 * log10(0.34 / 2.0);
-    case 14: gainDb = -20 * log10(0.29 / 2.0);
-    case 15: gainDb = -20 * log10(0.24 / 2.0);
+    case 0: gainDb = -20 * log10(3.12 / 2.0); break;
+    case 1: gainDb = -20 * log10(2.63 / 2.0); break;
+    case 2: gainDb = -20 * log10(2.22 / 2.0); break;
+    case 3: gainDb = -20 * log10(1.87 / 2.0); break;
+    case 4: gainDb = -20 * log10(1.58 / 2.0); break;
+    case 5: gainDb = -20 * log10(1.33 / 2.0); break;
+    case 6: gainDb = -20 * log10(1.11 / 2.0); break;
+    case 7: gainDb = -20 * log10(0.94 / 2.0); break;
+    case 8: gainDb = -20 * log10(0.79 / 2.0); break;
+    case 9: gainDb = -20 * log10(0.67 / 2.0); break;
+    case 10: gainDb = -20 * log10(0.56 / 2.0); break;
+    case 11: gainDb = -20 * log10(0.48 / 2.0); break;
+    case 12: gainDb = -20 * log10(0.40 / 2.0); break;
+    case 13: gainDb = -20 * log10(0.34 / 2.0); break;
+    case 14: gainDb = -20 * log10(0.29 / 2.0); break;
+    case 15: gainDb = -20 * log10(0.24 / 2.0); break;
+  }
+  if(printDiags){
+    Serial.print("Gain dB:");
+    Serial.println(gainDb);
   }
 }
 
@@ -825,10 +840,11 @@ time_t getParticleTime()
   time_t particleTime;
 
   if(printDiags) Serial.println("Time sync");
-  
+
+  HWSERIAL.clear();
   HWSERIAL.write("t"); // command to request time
   HWSERIAL.flush();
-
+  
   // check if any data has arrived on the hardware serial port
   // time out if don't get expected number of bytes within timeout
   int timeTimeOut = 100;
@@ -850,6 +866,7 @@ time_t getParticleTime()
           return particleTime;
     }
   }
+  
   return 0; // unable to get Particle time
 }
 
