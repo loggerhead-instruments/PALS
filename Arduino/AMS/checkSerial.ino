@@ -8,7 +8,7 @@ void checkSerial(){
       // read data from the hardware serial port
       n = HWSERIAL.readBytes((char *)buffer, 1);
       if (buffer[0] == 'a'){
-        SerialUSB.println("Got sync from Particle");
+        SerialUSB.println("Particle sync");
         HWSERIAL.print(dataPacket);
         HWSERIAL.flush();
       }
@@ -41,7 +41,7 @@ void packData(){
      dataPacket += whistleCount;
      dataPacket += "}";
 
-     if(printDiags) Serial.print(dataPacket);
+     if(printDiags) Serial.println(dataPacket);
 }
 
 

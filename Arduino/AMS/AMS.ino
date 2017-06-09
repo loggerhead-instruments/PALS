@@ -39,16 +39,17 @@ Adafruit_SSD1306 display(OLED_RESET);
 //
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
-long rec_dur = 300;
+long rec_dur = 60;
 long rec_int = 0;
 int fftFlag = 1;
-int roundSeconds = 60;//modulo to nearest x seconds
+int roundSeconds = rec_dur;//modulo to nearest x seconds
 float hydroCal = -180.0;
 int wakeahead = 20;  //wake from snooze to give hydrophone and camera time to power up
 //
 //***********************************************************
 
 static uint8_t myID[8];
+char myIdHex[18];
 unsigned long baud = 115200;
 
 #define SECONDS_IN_MINUTE 60
@@ -264,8 +265,9 @@ void setup() {
   delay(500);    
 
   setSyncProvider(getParticleTime); //get RTC from Particle cell when available
-  SerialUSB.print("Time status: ");
-  SerialUSB.println(timeStatus());
+  setSyncInterval(120); // sync RTC from particle this number of seconds
+  Serial.print("Time status: ");
+  Serial.println(timeStatus());
   t = Teensy3Clock.get();
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
@@ -280,6 +282,8 @@ void setup() {
 
   manualSettings();
   SdFile::dateTimeCallback(file_date_time);
+
+  logFileHeader(); //write header to log file
   
   digitalWrite(hydroPowPin, LOW); // make sure hydrophone powered off when in manual settings in case of accidental reset
   
@@ -348,6 +352,7 @@ void setup() {
 int recLoopCount;  //for debugging when does not start record
   
 void loop() {
+  
   // Standby mode
   if(mode == 0)
   {
@@ -360,8 +365,6 @@ void loop() {
       display.print(currentCard + 1);
       display.print(" ");
       display.print(filesPerCard[currentCard]);
-      // display.print("Free:");
-      // display.print();
       displayClock(startTime, 40, 1);
       displayClock(t, BOTTOM, 1);
       display.display();
@@ -383,17 +386,8 @@ void loop() {
         Serial.print("Next Start:");
         printTime(startTime);
 
-//        cDisplay();
-//        display.println("Rec");
-//        display.setTextSize(1);
-//        display.print("Stop Time: ");
-//        displayClock(stopTime, 30);
-//        display.display();
-
         mode = 1;
-        fftCount = 0;
-  
-        display.ssd1306_command(SSD1306_DISPLAYOFF); // turn off display during recording
+        fftCount = 0;  
         startRecording();
       }
   }
@@ -451,91 +445,79 @@ void loop() {
       }
     }
     //
-    // End audomated signal processing
+    // End automated signal processing
     //
 
-    /*
-     // update clock while recording
-      recLoopCount++;
-      if(recLoopCount>50){
-        recLoopCount = 0;
-        t = Teensy3Clock.get();
-        cDisplay();
-        if(rec_int > 0) {
-          display.println("Rec");
-          displayClock(stopTime, 20);
-        }
-        else{
-          display.println("Rec Contin");
-          display.setTextSize(1);
-          display.println(filename);
-        }
-        displayClock(t, BOTTOM);
-        display.display();
-      }
-      */
-      
-    if(buf_count >= nbufs_per_file){       // time to stop?
-      if(fftFlag) summarizeSignals();
-      
-      if(rec_int == 0){
+    // if continuous recording, start new file based on time
+    if(rec_int==0){
+      t = Teensy3Clock.get();
+      if(t>=stopTime){
+        startTime = stopTime;
+        stopTime = startTime + rec_dur;
         frec.close();
+        updateLog();
+        if(printDiags) {
+          Serial.print("Buffers rec:");
+          Serial.println(buf_count);
+        }
         checkSD();
         FileInit();  // make a new file
         buf_count = 0;
         if(fftFlag) resetSignals();
       }
-      else{
-        stopRecording();
-        
-        checkSD();
-        if(fftFlag) resetSignals();
-        
-        long ss = startTime - Teensy3Clock.get() - wakeahead;
-        if (ss<0) ss=0;
-        snooze_hour = floor(ss/3600);
-        ss -= snooze_hour * 3600;
-        snooze_minute = floor(ss/60);
-        ss -= snooze_minute * 60;
-        snooze_second = ss;
-        
-        if( (snooze_hour * 3600) + (snooze_minute * 60) + snooze_second >=10){
-            if (printDiags) Serial.println("Shutting bits down");
-            digitalWrite(hydroPowPin, LOW); //hydrophone off
-            cam_off(); //camera off
-            if (printDiags) Serial.println("hydrophone off");
-            audio_power_down();
-            if (printDiags) Serial.println("audio power down");
-
-            if(printDiags){
-              Serial.print("Snooze HH MM SS ");
-              Serial.print(snooze_hour);
-              Serial.print(snooze_minute);
-              Serial.println(snooze_second);
-            }
-            delay(100);
-            Serial.println("Going to Sleep");
-            delay(100);
+    }
+    else{
+      if((buf_count >= nbufs_per_file)){       // time to stop for interval recording?
+        if(fftFlag) summarizeSignals();
+          stopRecording();
+          checkSD();
+          if(fftFlag) resetSignals();
+       
+          long ss = startTime - Teensy3Clock.get() - wakeahead;
+          if (ss<0) ss=0;
+          snooze_hour = floor(ss/3600);
+          ss -= snooze_hour * 3600;
+          snooze_minute = floor(ss/60);
+          ss -= snooze_minute * 60;
+          snooze_second = ss;
+          
+          if( (snooze_hour * 3600) + (snooze_minute * 60) + snooze_second >=10){
+              if (printDiags) Serial.println("Shutting bits down");
+              digitalWrite(hydroPowPin, LOW); //hydrophone off
+              cam_off(); //camera off
+              if (printDiags) Serial.println("hydrophone off");
+              audio_power_down();
+              if (printDiags) Serial.println("audio power down");
   
-            alarm.setAlarm(snooze_hour, snooze_minute, snooze_second);
-            Snooze.sleep(config_teensy32);
-            
-            /// ... Sleeping ....
-            
-            digitalWrite(hydroPowPin, HIGH); // hydrophone on
-   
-            cam_wake();
-            audio_power_up();
-            //sdInit();  //reinit SD because voltage can drop in hibernate
-         }
-         else{
-          cam_stop();
-         }
-         
-        //digitalWrite(displayPow, HIGH); //start display up on wake
-        //delay(100);
-        display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
-        mode = 0;  // standby mode
+              if(printDiags){
+                Serial.print("Snooze HH MM SS ");
+                Serial.print(snooze_hour);
+                Serial.print(snooze_minute);
+                Serial.println(snooze_second);
+              }
+              delay(100);
+              Serial.println("Going to Sleep");
+              delay(100);
+    
+              alarm.setAlarm(snooze_hour, snooze_minute, snooze_second);
+              Snooze.sleep(config_teensy32);
+              
+              /// ... Sleeping ....
+              
+              digitalWrite(hydroPowPin, HIGH); // hydrophone on
+     
+              cam_wake();
+              audio_power_up();
+              //sdInit();  //reinit SD because voltage can drop in hibernate
+           }
+           else{
+            cam_stop();
+           }
+           
+          //digitalWrite(displayPow, HIGH); //start display up on wake
+          //delay(100);
+          display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
+          mode = 0;  // standby mode
       }
     }
   }
@@ -544,6 +526,7 @@ void loop() {
 void startRecording() {
   if (printDiags)  Serial.println("startRecording");
   FileInit();
+  display.ssd1306_command(SSD1306_DISPLAYOFF); // turn off display during recording after FileInit, so can see if problem
   buf_count = 0;
   queue1.begin();
   if (printDiags)  Serial.println("Queue Begin");
@@ -583,11 +566,12 @@ void stopRecording() {
   AudioMemoryUsageMaxReset();
   //frec.timestamp(T_WRITE,(uint16_t) year(t),month(t),day(t),hour(t),minute(t),second);
   frec.close();
-  delay(100);
+  updateLog();
 }
 
-void FileInit()
-{
+void FileInit(){
+   //getParticleTime();
+   File logFile;
    t = Teensy3Clock.get();
    
    if ((folderMonth != month(t)) | newCard){
@@ -605,54 +589,35 @@ void FileInit()
    sprintf(filename,"%s/%02d-%02d-%02dT%02d%02d%02d_%02x%02x%02x%02x%02x%02x%02x%02x.wav", dirname, year(t), month(t), day(t), hour(t), minute(t), second(t),
           myID[0], myID[1], myID[2], myID[3], myID[4], myID[5], myID[6], myID[7]);  //filename is DDHHMM
    if(printDiags) Serial.println(filename);
-   while (sd.exists(filename)){
-    filenameIncrement++;
-    sprintf(filename,"%s/%02d%02d%02d%02d_%d.wav", dirname, day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
-   }
 
    // log file
    //SdFile::dateTimeCallback(file_date_time);
-
-   float voltage = readVoltage();
-   File logFile;
-   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-      logFile.print(filename);
-      if(fftFlag){
-        for (int i=0; i<4; i++){
-          logFile.print(',');
-          if(meanBand[i]>0.00001){
-            float spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
-            spectrumLevel = spectrumLevel - hydroCal - gainDb;
-            logFile.print(spectrumLevel);
-          }
-           else{
-            logFile.print("-100");
-           }
-        }
-        logFile.print(',');
-        logFile.print(whistleCount); 
-      }
+  float voltage = readVoltage();
+  if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+      //logFile.print(filename);
+      logFile.print(year(t)); logFile.print("-");
+      logFile.print(month(t)); logFile.print("-");
+      logFile.print(day(t)); logFile.print("T");
+      logFile.print(hour(t)); logFile.print(":");
+      logFile.print(minute(t)); logFile.print(":");
+      logFile.print(second(t));
+      logFile.print(',');
+      logFile.print(myIdHex);
       logFile.print(',');
       logFile.print(gainSetting); 
       logFile.print(',');
-      logFile.println(voltage); 
-      if(voltage < 3.0){
-        logFile.println("Stopping because Voltage less than 3.0 V");
-        logFile.close();  
-        // low voltage hang but keep checking voltage
-        while(readVoltage() < 3.0){
-            delay(30000);
-        }
-      }
+      logFile.print(voltage); 
+      if(fftFlag==0) logFile.println();
       logFile.close();
+      if(printDiags) Serial.println("Log updated");
    }
    else{
-    if(printDiags) Serial.print("Log open fail.");
+    if(printDiags) Serial.print("Log open fail");
     // resetFunc();
    }
-    
+   
    frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
-   Serial.println(filename);
+   if(printDiags) Serial.println("file opened");
    
    while (!frec){
     file_count += 1;
@@ -663,13 +628,14 @@ void FileInit()
     logFile.close();
     frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
     Serial.println(filename);
-//    if(file_count>1000) {
-//      currentCard += 1; // try next card after many tries
-//      if(currentCard==4) resetFunc(); // try starting all over
-//      if(sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))) {
-//        newCard = 1;
-//      }
-    }
+    if(file_count>1000) {
+        currentCard += 1; // try next card after many tries
+        if(currentCard==4) resetFunc(); // try starting all over
+        if(sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))) {
+          newCard = 1;
+        }
+      }
+   }
 
     //intialize .wav file header
     sprintf(wav_hdr.rId,"RIFF");
@@ -691,6 +657,61 @@ void FileInit()
 
   Serial.print("Buffers: ");
   Serial.println(nbufs_per_file);
+}
+
+void logFileHeader(){
+  File logFile;
+  if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+    logFile.print("datetime");
+    logFile.print(",");
+    logFile.print("ID");
+    logFile.print(",");
+    logFile.print("gain");
+    logFile.print(",");
+    logFile.print("batteryV");
+    logFile.print(",");
+    if(fftFlag){
+      for (int i=0; i<4; i++){
+        logFile.print(bandLow[i]*binwidth);
+        logFile.print("-");
+        logFile.print(bandHigh[i]*binwidth);
+        logFile.print(",");
+      }
+      logFile.println("whistles");
+    }
+    logFile.close();
+  }
+}
+
+void updateLog(){
+   // update log file with data processing from last file
+   File logFile;
+   float spectrumLevel;
+   if(printDiags) Serial.println("Log file acoustic data");
+   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+      if(fftFlag){
+        for (int i=0; i<4; i++){
+          logFile.print(',');
+          if(meanBand[i]>0.00001){
+            spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
+            spectrumLevel = spectrumLevel - hydroCal - gainDb;
+            logFile.print(spectrumLevel);
+          }
+           else{
+            spectrumLevel = -100 - (10 * log10(binwidth));
+            spectrumLevel = spectrumLevel - hydroCal - gainDb;
+            logFile.print(spectrumLevel);
+           }
+        }
+        logFile.print(',');
+        logFile.println(whistleCount); 
+      }
+      logFile.close();
+   }
+   else{
+    if(printDiags) Serial.print("Log open fail.");
+    // resetFunc();
+   }
 }
 
 void checkSD(){
@@ -794,7 +815,7 @@ time_t getParticleTime()
   char buffer[12];
   time_t particleTime;
 
-  if(printDiags) SerialUSB.println("Time sync");
+  if(printDiags) Serial.println("Time sync");
   
   HWSERIAL.write("t"); // command to request time
   HWSERIAL.flush();
@@ -810,11 +831,12 @@ time_t getParticleTime()
           particleTime = atoi(buffer);
           
           if(printDiags){    
-            SerialUSB.print("elapsed (ms):");
-            SerialUSB.println(millis()-startTime);
-            SerialUSB.print("Particle: ");
-            SerialUSB.println(particleTime);
+            Serial.print("elapsed (ms):");
+            Serial.println(millis()-startTime);
+            Serial.print("Particle: ");
+            Serial.println(particleTime);
           }
+          Teensy3Clock.set(particleTime);
           return particleTime;
     }
   }
@@ -879,6 +901,7 @@ void read_EE(uint8_t word, uint8_t *buf, uint8_t offset)  {
 void read_myID() {
   read_EE(0xe,myID,0); // should be 04 E9 E5 xx, this being PJRC's registered OUI
   read_EE(0xf,myID,4); // xx xx xx xx
+  sprintf(myIdHex, "%02x%02x%02x%02x%02x%02x%02x%02x", myID[0], myID[1], myID[2], myID[3], myID[4], myID[5], myID[6], myID[7]);
 }
 
 float readVoltage(){
