@@ -118,6 +118,7 @@ time_t startTime;
 time_t stopTime;
 time_t t;
 time_t burnTime;
+time_t lastTimeSet; // last time the clock was updated
 byte startHour, startMinute, endHour, endMinute; //used in Diel mode
 
 boolean CAMON = 0;
@@ -264,26 +265,32 @@ void setup() {
 
   delay(500);    
 
-  setSyncProvider(getParticleTime); //get RTC from Particle cell when available
-  setSyncInterval(120); // sync RTC from particle this number of seconds
-  Serial.print("Time status: ");
-  Serial.println(timeStatus());
-  t = Teensy3Clock.get();
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
   delay(100);
-  cDisplay();
-  display.println("Loggerhead");
-  display.display();
 
   cDisplay();
   display.println("Loggerhead");
+  display.setTextSize(1);
+  display.println("Getting Cell Time");
   display.display();
+
+  // setSyncProvider does not seem to work...so doing manually from within loop to update time
+  //setSyncProvider(getParticleTime); //get RTC from Particle cell when available
+  //setSyncInterval(120); // sync RTC from particle this number of seconds
+  int getTimeTimeout = 0;
+  // try to get time from Particle for up to 180 seconds
+  while((getParticleTime()==0) & (getTimeTimeout<180)){
+    delay(1000);
+    getTimeTimeout++;
+  }
+  Serial.print("Time status: ");
+  Serial.println(timeStatus());
+  t = Teensy3Clock.get();
+  
 
   manualSettings();
   SdFile::dateTimeCallback(file_date_time);
-
-  logFileHeader(); //write header to log file
   
   digitalWrite(hydroPowPin, LOW); // make sure hydrophone powered off when in manual settings in case of accidental reset
   
@@ -343,6 +350,7 @@ void setup() {
 
   // create first folder to hold data
   folderMonth = -1;  //set to -1 so when first file made will create directory
+  logFileHeader(); //write header to log file
 }
 
 //
@@ -352,11 +360,11 @@ void setup() {
 int recLoopCount;  //for debugging when does not start record
   
 void loop() {
-  
+  t = Teensy3Clock.get();
+  if((hour(t)==0) & (minute(t)==46) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
   // Standby mode
   if(mode == 0)
   {
-      t = Teensy3Clock.get();
       cDisplay();
       display.println("Next Start");
       display.setTextSize(1);
@@ -660,6 +668,7 @@ void FileInit(){
 }
 
 void logFileHeader(){
+  if(printDiags) Serial.print("Log file header");
   File logFile;
   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
     logFile.print("datetime");
@@ -837,6 +846,7 @@ time_t getParticleTime()
             Serial.println(particleTime);
           }
           Teensy3Clock.set(particleTime);
+          lastTimeSet = particleTime;
           return particleTime;
     }
   }

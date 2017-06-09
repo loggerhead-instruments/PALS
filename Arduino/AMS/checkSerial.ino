@@ -8,7 +8,7 @@ void checkSerial(){
       // read data from the hardware serial port
       n = HWSERIAL.readBytes((char *)buffer, 1);
       if (buffer[0] == 'a'){
-        SerialUSB.println("Particle sync");
+        Serial.println("Particle sync");
         HWSERIAL.print(dataPacket);
         HWSERIAL.flush();
       }
