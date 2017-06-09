@@ -39,10 +39,10 @@ Adafruit_SSD1306 display(OLED_RESET);
 //
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
-long rec_dur = 60;
+long rec_dur = 300;
 long rec_int = 0;
 int fftFlag = 1;
-int roundSeconds = rec_dur;//modulo to nearest x seconds
+int roundSeconds = 300;//modulo to nearest x seconds
 float hydroCal = -180.0;
 int wakeahead = 20;  //wake from snooze to give hydrophone and camera time to power up
 //
@@ -361,7 +361,7 @@ int recLoopCount;  //for debugging when does not start record
   
 void loop() {
   t = Teensy3Clock.get();
-  if((hour(t)==0) & (minute(t)==46) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
+  if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
   // Standby mode
   if(mode == 0)
   {
