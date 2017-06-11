@@ -79,8 +79,8 @@ void manualSettings(){
   LoadScript(); // secret settings accessible from card 1
   
   // make sure settings valid (if EEPROM corrupted or not set yet)
-  if (rec_dur < 0 | rec_dur>100000) rec_dur = 60;
-  if (rec_int<0 | rec_int>100000) rec_int = 60;
+  if (rec_dur < 0 | rec_dur>100000) rec_dur = 300;
+  if (rec_int<0 | rec_int>100000) rec_int = 0;
   if (startHour<0 | startHour>23) startHour = 0;
   if (startMinute<0 | startMinute>59) startMinute = 0;
   if (endHour<0 | endHour>23) endHour = 0;
