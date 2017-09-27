@@ -17,10 +17,10 @@ Fs, y = wav.read(path + fileName)
 # - smooth across edges of insert
 
 
-clickDur = 0.01 # click duration in seconds
+clickDur = 0.005 # click duration in seconds
 clickPts = int(clickDur * Fs)
-rewindPts = 100
-preClickPts = 4
+rewindPts = 400
+preClickPts = 40
 
 # 1. diffence and threshold to find clicks
 yDiff = abs(np.diff(y))
@@ -31,7 +31,7 @@ clickDiff = np.diff(click.astype(np.int)) # difference to get start and end of c
 
 # 2. replace clicks with short segment from rewindPts before
 indicesToReplace = np.argwhere(clickDiff == 1) - preClickPts
-y2 = y
+y2 = np.copy(y) # make copy
 for i in indicesToReplace:
     for j in range(0, clickPts-1):
         goodIndex = i - rewindPts + j
