@@ -36,7 +36,7 @@ for start in range(0, len(y), fftPts):
 
 Ts = 1.0 / Fs; # sampling interval
 t = np.arange(0, len(peaks)) * (Fs/fftPts) # time vector
-plt.plot(peaks, '.')
+plt.plot(t, peaks, '.')
 plt.title(fileName)
 plt.ylabel('Peak Frequency (Hz)')
 plt.xlabel('Time (s)')
