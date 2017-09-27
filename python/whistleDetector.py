@@ -12,6 +12,8 @@ fftPts = 512
 binWidth = Fs / fftPts
 fftDurationMs = 1000.0 / binWidth
 
+### Settings that can be tweaked to change sensitivity
+
 # frequency range to look for peak
 startFreq = 5000
 endFreq = 20000
@@ -19,11 +21,15 @@ startBin = int(startFreq/binWidth)
 endBin = int(endFreq/binWidth)
 
 # adjacent bins need to be within x Hz of each other to add to runLength
-whistleDelta = 500.0 # default = 500
+whistleDelta = 1500.0 # default = 500
+
 # minimum run length to count as whistle
-minRunLength = 100.0 / fftDurationMs # default = 300
+minRunLength = 200.0 / fftDurationMs # default = 300
+
 # candidate whistle must cover this number of bins
 fmThreshold = 1000.0 # default = 1000
+
+### End user settings
 
 # step through chunks
 index = 0
@@ -59,7 +65,7 @@ for start in range(0, len(y), fftPts):
             whistleIndex.append(index * (fftPts/Fs))
         # store run lengths
         rlIndex.append(index * (fftPts/Fs))
-        rlPoints.append(runLength)
+        rlPoints.append(runLength * fftDurationMs)
         maxPeakFreq = 0
         minPeakFreq = endFreq
         runLength = 0
