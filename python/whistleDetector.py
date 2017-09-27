@@ -19,11 +19,11 @@ startBin = int(startFreq/binWidth)
 endBin = int(endFreq/binWidth)
 
 # adjacent bins need to be within x Hz of each other to add to runLength
-whistleDelta = 500.0
+whistleDelta = 500.0 # default = 500
 # minimum run length to count as whistle
-minRunLength = 100.0 / fftDurationMs
+minRunLength = 100.0 / fftDurationMs # default = 300
 # candidate whistle must cover this number of bins
-fmThreshold = 1000.0
+fmThreshold = 1000.0 # default = 1000
 
 # step through chunks
 index = 0
@@ -53,9 +53,11 @@ for start in range(0, len(y), fftPts):
         # end of run
         if((runLength>minRunLength) &
             (maxPeakFreq - minPeakFreq > fmThreshold)):
+            # store detected whistles
             whistleCount += 1
             whistles.append(peakFrequency)
             whistleIndex.append(index * (fftPts/Fs))
+        # store run lengths
         rlIndex.append(index * (fftPts/Fs))
         rlPoints.append(runLength)
         maxPeakFreq = 0
