@@ -19,13 +19,13 @@ Fs, y = wav.read(path + fileName)
 
 clickDur = 0.005 # click duration in seconds
 clickPts = int(clickDur * Fs)
-rewindPts = 400
+rewindPts = clickPts
 preClickPts = 40
 
 # 1. diffence and threshold to find clicks
 yDiff = abs(np.diff(y))
 ySmooth = signal.convolve(yDiff, np.ones(10)/10.0) # moving average
-clickThreshold = 10 * ySmooth.std() # set threshold to 10 * rms of diff signal
+clickThreshold = 5 * ySmooth.std() # set threshold to 10 * rms of diff signal
 click = ySmooth > clickThreshold # threshold to detect clicks
 clickDiff = np.diff(click.astype(np.int)) # difference to get start and end of clicks
 
@@ -37,7 +37,8 @@ for i in indicesToReplace:
         goodIndex = i - rewindPts + j
         if (goodIndex<0): # make sure not before start of signal
             goodIndex = 0
-        y2[i+j] = y2[goodIndex]
+        if(i+j<len(y2)):
+            y2[i+j] = y2[goodIndex]
 
 plt.plot(y, 'b')
 plt.plot(y2, 'r')
