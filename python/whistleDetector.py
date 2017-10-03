@@ -3,7 +3,7 @@ import numpy as np
 import scipy.io.wavfile as wav
 
 path = '/w/loggerhead/AMS/python/testSignals/'
-fileName = '2017-06-13T205600_0004e9e500042ae3_2.0.wav'
+fileName = 'whistleTest.wav'
 
 Fs, y = wav.read(path + fileName)
 
@@ -24,7 +24,7 @@ endBin = int(endFreq/binWidth)
 whistleDelta = 1500.0 # default = 500
 
 # minimum run length to count as whistle
-minRunLength = 200.0 / fftDurationMs # default = 300
+minRunLength = 150.0 / fftDurationMs # default = 300
 
 # candidate whistle must cover this number of bins
 fmThreshold = 1000.0 # default = 1000
