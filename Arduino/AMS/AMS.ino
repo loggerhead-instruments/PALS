@@ -426,7 +426,7 @@ void loop() {
 
       // track minimum and maximum peakBins during run
       if((peakBin < minPeakBin) | (minPeakBin==0)) minPeakBin = peakBin; 
-          if((peakBin > maxPeakBin) | (maxPeakBin==0)) maxPeakBin = peakBin;
+      if((peakBin > maxPeakBin) | (maxPeakBin==0)) maxPeakBin = peakBin;
 
       // increment runLength if new peak is withing whistleDelta of old peak
       if(abs(peakBin - oldPeakBin) < whistleDelta){
@@ -441,6 +441,8 @@ void loop() {
           whistleCount++;
         }
         runLength = 1;
+        maxPeakBin = 0; // reset peak bins after end of run
+        minPeakBin = 0;
       }
       oldPeakBin = peakBin;
 
