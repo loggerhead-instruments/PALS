@@ -309,7 +309,7 @@ void displaySettings(){
   uint32_t totalRecSeconds = 0;
 
   float fileBytes = (2 * rec_dur * audio_srate) + 44;
-  float fileMB = fileBytes / 1024 / 1024;
+  float fileMB = (fileBytes + 32768) / 1000 / 1000; // add cluster size so don't underestimate fileMB
   float dielFraction = 1.0; //diel mode decreases time spent recording, increases time in sleep
   if(recMode==MODE_DIEL){
     float dielHours, dielMinutes;
