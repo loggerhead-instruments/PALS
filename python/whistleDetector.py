@@ -4,6 +4,8 @@ import scipy.io.wavfile as wav
 import scipy.signal as signal
 import glob, os
 
+fftPts = 128
+
 def main():
     path = '/w/loggerhead/AMS/python/trainingFiles/whistles/'
     fileName = 'whistleTest.wav'
@@ -18,7 +20,7 @@ def main():
     print(whistles)
     
     plt.subplot(2, 1, 1)
-    plt.specgram(y, NFFT=512, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
     plt.plot(whistles, np.zeros(len(whistles)), 'bo')
     plt.title('original')
     
@@ -27,7 +29,7 @@ def main():
     print(whistles)
     
     plt.subplot(2, 1, 2)
-    plt.specgram(y, NFFT=512, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
     plt.plot(whistles, np.zeros(len(whistles)), 'bo')
     plt.title('deSnap')
     plt.show()
@@ -35,7 +37,7 @@ def main():
 
 def whistleDetect(y):
     # frequency resolution
-    fftPts = 512
+
     binWidth = Fs / fftPts
     fftDurationMs = 1000.0 / binWidth
     
@@ -107,7 +109,7 @@ def deSnap(y):
     clickPts = int(clickDur * Fs)
     rewindPts = clickPts
     preClickPts = 40
-    nStd = 3
+    nStd = 1.5
     
     # 1. diffence and threshold to find clicks
     yDiff = abs(np.diff(y))
