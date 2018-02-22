@@ -4,35 +4,35 @@ import scipy.io.wavfile as wav
 import scipy.signal as signal
 import glob, os
 
-fftPts = 128
+fftPts = 256
 
-def main():
-    path = '/w/loggerhead/AMS/python/trainingFiles/whistles/'
-    fileName = 'whistleTest.wav'
-    # fileName = 'whis6.wav'
-    
-    # run through all files
-    os.chdir(path)
-    #for fileName in glob.glob('*.wav'):
-    
-    Fs, y = wav.read(path + fileName)
-    whistles = whistleDetect(y)
-    print(whistles)
-    
-    plt.subplot(2, 1, 1)
-    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
-    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
-    plt.title('original')
-    
-    y = deSnap(y)
-    whistles = whistleDetect(y)
-    print(whistles)
-    
-    plt.subplot(2, 1, 2)
-    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
-    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
-    plt.title('deSnap')
-    plt.show()
+
+path = '/Users/dmann/w/AMS/python/testSignals/'
+fileName = 'whistleTest.wav'
+# fileName = 'whis6.wav'
+
+# run through all files
+os.chdir(path)
+#for fileName in glob.glob('*.wav'):
+
+Fs, y = wav.read(path + fileName)
+whistles, peaks = whistleDetect(y)
+print(whistles)
+
+plt.subplot(2, 1, 1)
+plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+plt.plot(whistles, np.zeros(len(whistles)), 'bo')
+plt.title('original')
+
+y = deSnap(y)
+whistles = whistleDetect(y)
+print(whistles)
+
+plt.subplot(2, 1, 2)
+plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+plt.plot(whistles, np.zeros(len(whistles)), 'bo')
+plt.title('deSnap')
+plt.show()
 
 
 def whistleDetect(y):
@@ -101,7 +101,7 @@ def whistleDetect(y):
     
         oldPeakFrequency = peakFrequency
         index = index + 1
-    return whistleIndex
+    return whistleIndex, peaks
 
 def deSnap(y):
     # declick signal
