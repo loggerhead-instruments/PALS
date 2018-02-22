@@ -12,10 +12,10 @@ import scipy.io.wavfile as wav
 import scipy.signal as signal
 import glob, os
 
-
 #path = '/Users/dmann/w/AMS/python/testSignals/'
-path = '/Users/dmann/Desktop/2017-11/'
-#fileName = '2017-06-13T205600_0004e9e500042ae3_2.0.wav'
+path = '/Users/dmann/w/AMS/python/testSignals/echolocation/'
+#path = '/Users/dmann/Desktop/2017-11/'
+#fileName = '2017-11-02T214500_0004e9e500057249_2.0.wav'
 #fileName = 'whistleTest.wav'
 #Fs, y = wav.read(path + fileName)
 
