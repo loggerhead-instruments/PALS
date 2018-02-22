@@ -13,16 +13,11 @@ import scipy.signal as signal
 import glob, os
 
 
-path = '/Users/dmann/w/AMS/python/testSignals/'
+#path = '/Users/dmann/w/AMS/python/testSignals/'
+path = '/Users/dmann/Desktop/2017-11/'
 #fileName = '2017-06-13T205600_0004e9e500042ae3_2.0.wav'
-fileName = 'whistleTest.wav'
-Fs, y = wav.read(path + fileName)
-# frequency resolution
-fftPts = 256
-binWidth = Fs / fftPts
-fftDurationMs = 1000.0 / binWidth
-startBin = int(startFreq/binWidth)
-endBin = int(endFreq/binWidth)
+#fileName = 'whistleTest.wav'
+#Fs, y = wav.read(path + fileName)
 
 ### Settings that can be tweaked to change sensitivity
 
@@ -45,6 +40,18 @@ fmThreshold = 500.0 # default = 1000
 # run through all files
 os.chdir(path)
 for fileName in glob.glob('*.wav'):
+    print(fileName)
+    try:
+        Fs, y = wav.read(path + fileName)
+    except ValueError as e:
+        print(e)
+        continue
+    # frequency resolution
+    fftPts = 256
+    binWidth = Fs / fftPts
+    fftDurationMs = 1000.0 / binWidth
+    startBin = int(startFreq/binWidth)
+    endBin = int(endFreq/binWidth)
     # step through chunks
     index = 0
     peaks = []
@@ -103,7 +110,10 @@ for fileName in glob.glob('*.wav'):
     plt.subplot(3, 1, 1)
     plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
     plt.show()
+    plt.pause(.11)
     wait = input("PRESS ENTER TO CONTINUE.")
+    
+    plt.close()
 
 
 
