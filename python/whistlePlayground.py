@@ -12,8 +12,8 @@ import scipy.io.wavfile as wav
 import scipy.signal as signal
 import glob, os
 
-#path = '/Users/dmann/w/AMS/python/testSignals/'
-path = '/Users/dmann/w/AMS/python/testSignals/echolocation/'
+path = '/Users/dmann/w/AMS/python/testSignals/'
+#path = '/Users/dmann/w/AMS/python/testSignals/echolocation/'
 #path = '/Users/dmann/Desktop/2017-11/'
 #fileName = '2017-11-02T214500_0004e9e500057249_2.0.wav'
 #fileName = 'whistleTest.wav'
@@ -64,6 +64,9 @@ for fileName in glob.glob('*.wav'):
     whistleIndex = []
     rlIndex = []
     rlPoints = []
+    highFreqAvg = [] # for echolocation band
+    lowFreqAvg = []  # echolocation reference band
+    echoIndex = []
     oldPeakFrequency = 0
     
     # no overlap of FFTs
@@ -73,6 +76,10 @@ for fileName in glob.glob('*.wav'):
         peakFrequency = (Y[startBin:endBin].argmax() + startBin) * binWidth
         peakAmplitude = Y[Y[startBin:endBin].argmax() + startBin]
         refAmplitude = Y[Y[startBin:endBin].argmax() + startBin - 6 : Y[startBin:endBin].argmax() + startBin - 2].mean()
+        highFreqAvg.append(Y[startBin:endBin].mean())
+        lowFreqAvg.append(Y[10:startBin].mean())
+        echoIndex.append(Y[startBin:endBin].mean()/Y[10:startBin].mean())
+        
         peaks.append(peakFrequency)
         toneIndex.append(peakAmplitude/refAmplitude)
         if(peakFrequency > maxPeakFreq):
@@ -104,7 +111,7 @@ for fileName in glob.glob('*.wav'):
     
     plt.plot(whistles, np.zeros(len(whistles)), 'bo')
     plt.subplot(3,1,2)
-    plt.plot(peaks)
+    plt.plot(echoIndex)
     plt.subplot(3,1,3)
     plt.plot(toneIndex)
     plt.subplot(3, 1, 1)
