@@ -8,18 +8,24 @@ Created on Wed Feb 21 16:44:41 2018
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.io.wavfile as wav
+#import scipy.io.wavfile as wav
+import soundfile as sf
 import scipy.signal as signal
 import glob, os
+import csv
 
-path = '/Users/dmann/w/AMS/python/testSignals/'
+#path = '/Users/dmann/w/AMS/python/testSignals/'
 #path = '/Users/dmann/w/AMS/python/testSignals/echolocation/'
-#path = '/Users/dmann/Desktop/2017-11/'
+path = '/Users/dmann/Desktop/2017-11/'
 #fileName = '2017-11-02T214500_0004e9e500057249_2.0.wav'
 #fileName = 'whistleTest.wav'
 #Fs, y = wav.read(path + fileName)
 
 ### Settings that can be tweaked to change sensitivity
+
+# frequency resolution
+fftPts = 256
+
 
 # frequency range to look for peak
 startFreq = 5000
@@ -29,7 +35,7 @@ endFreq = 22000
 whistleDelta = 1500.0 # default = 500
 
 # minimum run length to count as whistle
-minRunLength = 150.0 / fftDurationMs # default = 300
+minRunLength = 150.0  # default = 300
 
 # candidate whistle must cover this number of bins
 fmThreshold = 500.0 # default = 1000
@@ -42,14 +48,15 @@ os.chdir(path)
 for fileName in glob.glob('*.wav'):
     print(fileName)
     try:
-        Fs, y = wav.read(path + fileName)
+        #Fs, y = wav.read(path + fileName)
+        y, Fs = sf.read(path + fileName)
     except ValueError as e:
         print(e)
         continue
-    # frequency resolution
-    fftPts = 256
+    
     binWidth = Fs / fftPts
     fftDurationMs = 1000.0 / binWidth
+
     startBin = int(startFreq/binWidth)
     endBin = int(endFreq/binWidth)
     # step through chunks
@@ -75,7 +82,7 @@ for fileName in glob.glob('*.wav'):
         Y = abs(np.fft.fft(chunk)) / fftPts # fft and normalization
         peakFrequency = (Y[startBin:endBin].argmax() + startBin) * binWidth
         peakAmplitude = Y[Y[startBin:endBin].argmax() + startBin]
-        refAmplitude = Y[Y[startBin:endBin].argmax() + startBin - 6 : Y[startBin:endBin].argmax() + startBin - 2].mean()
+        refAmplitude = Y[Y[startBin:endBin].argmax() + startBin - 12 : Y[startBin:endBin].argmax() + startBin - 2].mean()
         highFreqAvg.append(Y[startBin:endBin].mean())
         lowFreqAvg.append(Y[10:startBin].mean())
         echoIndex.append(Y[startBin:endBin].mean()/Y[10:startBin].mean())
@@ -107,20 +114,38 @@ for fileName in glob.glob('*.wav'):
         index = index + 1
     
     
-    print(whistles)
+#    print(whistles)
+#    
+#    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
+#    plt.subplot(3,1,2)
+#    plt.plot(echoIndex)
+#    plt.subplot(3,1,3)
+#    plt.plot(toneIndex, '.')
+#    plt.subplot(3, 1, 1)
+#    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+#    plt.show()
+    #plt.pause(1)
     
-    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
-    plt.subplot(3,1,2)
-    plt.plot(echoIndex)
-    plt.subplot(3,1,3)
-    plt.plot(toneIndex)
-    plt.subplot(3, 1, 1)
-    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
-    plt.show()
-    plt.pause(.11)
-    wait = input("PRESS ENTER TO CONTINUE.")
+    whistleBinCount = np.count_nonzero(np.greater(toneIndex, 10));
+    print(np.mean(toneIndex))
+    print(np.std(toneIndex))
+    print(np.max(toneIndex))
+    print(whistleBinCount)
+
+    #wait = input("PRESS ENTER TO CONTINUE.")
     
-    plt.close()
-
-
-
+    #plt.close()
+    
+    # write to file
+    f = open('whistles.csv', 'a')     
+    f.write('%s' % fileName)
+    f.write(',')
+    f.write('%f'% np.mean(toneIndex))
+    f.write(',')
+    f.write('%f'% np.std(toneIndex))
+    f.write(',')
+    f.write('%f'% np.max(toneIndex))
+    f.write(',')
+    f.write('%d'% whistleBinCount)
+    f.write('\n')
+    f.close()
