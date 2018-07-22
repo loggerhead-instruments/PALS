@@ -12,7 +12,7 @@ import numpy as np
 path = '/Users/dmann/w/AMS/python/'
 fileName = 'PalmaSolaAnalysis.csv'
 
-metric = 'maxSNR3'
+metric = 'bins3'
 
 # import data
 
