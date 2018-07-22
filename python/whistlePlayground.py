@@ -82,7 +82,7 @@ for fileName in glob.glob('*.wav'):
         Y = abs(np.fft.fft(chunk)) / fftPts # fft and normalization
         peakFrequency = (Y[startBin:endBin].argmax() + startBin) * binWidth
         peakAmplitude = Y[Y[startBin:endBin].argmax() + startBin]
-        refAmplitude = Y[Y[startBin:endBin].argmax() + startBin - 12 : Y[startBin:endBin].argmax() + startBin - 2].mean()
+        refAmplitude = Y[Y[startBin:endBin].argmax() + startBin - 12 : Y[startBin:endBin].argmax() + startBin - 2].max()
         highFreqAvg.append(Y[startBin:endBin].mean())
         lowFreqAvg.append(Y[10:startBin].mean())
         echoIndex.append(Y[startBin:endBin].mean()/Y[10:startBin].mean())
@@ -127,6 +127,10 @@ for fileName in glob.glob('*.wav'):
     #plt.pause(1)
     
     whistleBinCount = np.count_nonzero(np.greater(toneIndex, 10));
+    N = 5
+    smoothed = np.convolve(toneIndex, np.ones((N,))/N, mode='valid')
+    whistleBinCountSmoothed = np.count_nonzero(np.greater(smoothed, 10));
+    
     print(np.mean(toneIndex))
     print(np.std(toneIndex))
     print(np.max(toneIndex))
@@ -137,7 +141,7 @@ for fileName in glob.glob('*.wav'):
     #plt.close()
     
     # write to file
-    f = open('whistles.csv', 'a')     
+    f = open('whistlesRefMaxAmp.csv', 'a')     
     f.write('%s' % fileName)
     f.write(',')
     f.write('%f'% np.mean(toneIndex))
@@ -147,5 +151,13 @@ for fileName in glob.glob('*.wav'):
     f.write('%f'% np.max(toneIndex))
     f.write(',')
     f.write('%d'% whistleBinCount)
+    f.write(',')
+    f.write('%f'% np.mean(smoothed))
+    f.write(',')
+    f.write('%f'% np.std(smoothed))
+    f.write(',')
+    f.write('%f'% np.max(smoothed))
+    f.write(',')
+    f.write('%d'% whistleBinCountSmoothed)
     f.write('\n')
     f.close()
