@@ -369,6 +369,7 @@ int recLoopCount;  //for debugging when does not start record
 void loop() {
   t = Teensy3Clock.get();
   if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
+  if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
   // Standby mode
   if(mode == 0)
   {
@@ -411,7 +412,7 @@ void loop() {
   // Record mode
   if (mode == 1) {
     continueRecording();  // download data  
-    if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
+    
     //
     // Automated signal processing
     //
@@ -492,46 +493,46 @@ void loop() {
           checkSD();
           if(fftFlag) resetSignals();
        
-          long ss = startTime - Teensy3Clock.get() - wakeahead;
-          if (ss<0) ss=0;
-          snooze_hour = floor(ss/3600);
-          ss -= snooze_hour * 3600;
-          snooze_minute = floor(ss/60);
-          ss -= snooze_minute * 60;
-          snooze_second = ss;
+//          long ss = startTime - Teensy3Clock.get() - wakeahead;
+//          if (ss<0) ss=0;
+//          snooze_hour = floor(ss/3600);
+//          ss -= snooze_hour * 3600;
+//          snooze_minute = floor(ss/60);
+//          ss -= snooze_minute * 60;
+//          snooze_second = ss;
           
-          if( (snooze_hour * 3600) + (snooze_minute * 60) + snooze_second >=10){
-              if (printDiags) Serial.println("Shutting bits down");
-              digitalWrite(hydroPowPin, LOW); //hydrophone off
-              cam_off(); //camera off
-              if (printDiags) Serial.println("hydrophone off");
-              audio_power_down();
-              if (printDiags) Serial.println("audio power down");
-  
-              if(printDiags){
-                Serial.print("Snooze HH MM SS ");
-                Serial.print(snooze_hour);
-                Serial.print(snooze_minute);
-                Serial.println(snooze_second);
-              }
-              delay(100);
-              Serial.println("Going to Sleep");
-              delay(100);
-    
-              alarm.setAlarm(snooze_hour, snooze_minute, snooze_second);
-              Snooze.sleep(config_teensy32);
-              
-              /// ... Sleeping ....
-              
-              digitalWrite(hydroPowPin, HIGH); // hydrophone on
-     
-              cam_wake();
-              audio_power_up();
-              //sdInit();  //reinit SD because voltage can drop in hibernate
-           }
-           else{
-            cam_stop();
-           }
+//          if( (snooze_hour * 3600) + (snooze_minute * 60) + snooze_second >=10){
+//              if (printDiags) Serial.println("Shutting bits down");
+//              digitalWrite(hydroPowPin, LOW); //hydrophone off
+//              cam_off(); //camera off
+//              if (printDiags) Serial.println("hydrophone off");
+//              audio_power_down();
+//              if (printDiags) Serial.println("audio power down");
+//  
+//              if(printDiags){
+//                Serial.print("Snooze HH MM SS ");
+//                Serial.print(snooze_hour);
+//                Serial.print(snooze_minute);
+//                Serial.println(snooze_second);
+//              }
+//              delay(100);
+//              Serial.println("Going to Sleep");
+//              delay(100);
+//    
+//              alarm.setAlarm(snooze_hour, snooze_minute, snooze_second);
+//              Snooze.sleep(config_teensy32);
+//              
+//              /// ... Sleeping ....
+//              
+//              digitalWrite(hydroPowPin, HIGH); // hydrophone on
+//     
+//              cam_wake();
+//              audio_power_up();
+//              //sdInit();  //reinit SD because voltage can drop in hibernate
+//           }
+//           else{
+//            cam_stop();
+//           }
            
           //digitalWrite(displayPow, HIGH); //start display up on wake
           //delay(100);
