@@ -308,14 +308,6 @@ void setup() {
   
   digitalWrite(hydroPowPin, LOW); // make sure hydrophone powered off when in manual settings in case of accidental reset
   
-  // disable buttons; not using any more
-  digitalWrite(UP, LOW);
-  digitalWrite(DOWN, LOW);
-  digitalWrite(SELECT, LOW);
-  pinMode(UP, OUTPUT);
-  pinMode(DOWN, OUTPUT);
-  pinMode(SELECT, OUTPUT);
-  
   cDisplay();
   
   t = Teensy3Clock.get();
