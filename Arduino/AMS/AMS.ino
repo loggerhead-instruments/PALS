@@ -224,9 +224,23 @@ void setup() {
   chipSelect[2] = CS3;
   chipSelect[3] = CS4;
 
+
   Serial.begin(baud);
   HWSERIAL.begin(baud);
   delay(500);
+
+  // change capacitance to 26 pF (12.5 pF load capacitance)
+  RTC_CR = 0; // disable RTC
+  delay(100);
+  Serial.println(RTC_CR,HEX);
+  RTC_CR = RTC_CR_SC16P | RTC_CR_SC8P | RTC_CR_SC2P; 
+  delay(100);
+  RTC_CR = RTC_CR_SC16P | RTC_CR_SC8P | RTC_CR_SC2P | RTC_CR_OSCE;
+  delay(100);
+
+  Serial.println(RTC_SR,HEX);
+  Serial.println(RTC_CR,HEX);
+  Serial.println(RTC_LR,HEX);
 
   if(printDiags){
     Serial.print("binwidth: ");

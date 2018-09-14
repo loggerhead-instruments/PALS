@@ -26,7 +26,7 @@ void manualSettings(){
   autoStartTime = Teensy3Clock.get();
 // get free space on cards
     cDisplay();
-    display.print("LS1 Init");
+    display.print("AMS Init");
     display.setTextSize(1);
     display.setCursor(0, 16);
     display.println("Card Free/Total MB");
