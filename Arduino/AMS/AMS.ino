@@ -1,8 +1,9 @@
 //
-// LS1 acoustic recorder
+// AMS acoustic monitoring station
+// Use LS1 libraries
 //
 // Loggerhead Instruments
-// 2017
+// 2017-2018
 // David Mann
 // 
 // Modified from PJRC audio code and Snap code
