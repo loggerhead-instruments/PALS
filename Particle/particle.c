@@ -34,4 +34,3 @@ void checkData(){
     delay(100);
     incomingString = Serial1.readString();
 }
-Ready.  morphing-gerbil  v0.4.8
