@@ -10,7 +10,7 @@
 // http://www.pjrc.com/store/teensy3_audio.html
 //
 
-// Compile with 48 MHz Optimize Speed
+// Compile with 72 MHz Optimize Fastest
 
 //#include <SerialFlash.h>
 #include <Audio.h>  //comment out includes SD.h from play_sd_
@@ -541,6 +541,7 @@ void loop() {
       }
     }
   }
+  asm("wfi"); // reduce power between interrupts
 }
 
 void startRecording() {
