@@ -10,7 +10,7 @@
 // http://www.pjrc.com/store/teensy3_audio.html
 //
 
-// Compile with 72 MHz Optimize Fastest
+// Compile with 48 MHz Optimize Fastest
 
 //#include <SerialFlash.h>
 #include <Audio.h>  //comment out includes SD.h from play_sd_
@@ -349,6 +349,7 @@ void setup() {
   // uses this memory to buffer incoming audio.
   AudioMemory(100);
   AudioInit(); // this calls Wire.begin() in control_sgtl5000.cpp
+  audio_bypass_adc_hp();
   fft256_1.averageTogether(1); // number of FFTs to average together
   
   digitalWrite(hydroPowPin, HIGH);
@@ -368,7 +369,7 @@ int recLoopCount;  //for debugging when does not start record
   
 void loop() {
   t = Teensy3Clock.get();
-  if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
+  //if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
   if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
   // Standby mode
   if(mode == 0)

@@ -445,7 +445,7 @@ bool audio_enable(void)
   //chipWrite(CHIP_SSS_CTRL, 0x0010); // ADC->I2S, I2S->DAC
   chipWrite(CHIP_SSS_CTRL, 0x0000); // ADC->I2S, ADC->DAC
 
-    chipWrite(CHIP_ADCDAC_CTRL, 0x0008); // DAC mute right; DAC left unmute; ADC HPF normal operation
+  chipWrite(CHIP_ADCDAC_CTRL, 0x0008); // DAC mute right; DAC left unmute; ADC HPF normal operation
   
   
   chipWrite(CHIP_DAC_VOL, 0xFF3C); // dac mute right; left 0 dB
