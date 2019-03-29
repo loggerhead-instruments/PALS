@@ -72,7 +72,8 @@ void manualSettings(){
   if(!sd.begin(chipSelect[0], SD_SCK_MHZ(50))){
     display.print("Card 1 Fail");
     display.display();
-    while(1);
+    delay(5000);
+    resetFunc();  // reset
   }
 
  
@@ -107,7 +108,7 @@ void manualSettings(){
 
     t = Teensy3Clock.get();
 
-    if (t - autoStartTime > 600) startRec = 1; //autostart if no activity for 10 minutes
+    if (t - autoStartTime > 300) startRec = 1; //autostart if no activity for 5 minutes
     switch (curSetting){
       case noSet:
         if (settingsChanged) {

@@ -39,6 +39,13 @@ void packData(){
      }
      dataPacket += ",\"w\":";
      dataPacket += whistleCount;
+
+     dataPacket += ",\"cc\":";
+     dataPacket += currentCard;
+
+     dataPacket += ",\"fr\":";
+     dataPacket += filesPerCard[currentCard];
+     
      dataPacket += "}";
 
      if(printDiags) Serial.println(dataPacket);

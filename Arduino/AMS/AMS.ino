@@ -10,7 +10,7 @@
 // http://www.pjrc.com/store/teensy3_audio.html
 //
 
-// Compile with 48 MHz Optimize Fastest
+// Compile with 72 MHz Optimize Fastest
 
 //#include <SerialFlash.h>
 #include <Audio.h>  //comment out includes SD.h from play_sd_
@@ -566,7 +566,7 @@ void continueRecording() {
     queue1.freeBuffer();
     memcpy(buffer+256, queue1.readBuffer(), 256);
     queue1.freeBuffer();
-    frec.write(buffer, 512); //audio to .wav file
+    if(!frec.write(buffer, 512)) resetFunc(); //audio to .wav file
       
     buf_count += 1;
     audioIntervalCount += 1;
@@ -700,7 +700,7 @@ void FileInit(){
   wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
   wav_hdr.dLen = nbufs_per_file * 256 * 2;
 
-  frec.write((uint8_t *)&wav_hdr, 44);
+  if(!frec.write((uint8_t *)&wav_hdr, 44)) resetFunc();
 
   Serial.print("Buffers: ");
   Serial.println(nbufs_per_file);
