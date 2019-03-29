@@ -523,11 +523,15 @@ void continueRecording() {
     queue1.freeBuffer();
     memcpy(buffer+256, queue1.readBuffer(), 256);
     queue1.freeBuffer();
-    if(!frec.write(buffer, 512)) resetFunc(); //audio to .wav file
+    if(frec.write(buffer, 512)!=512) {
+      Serial.println("Write fail");
+      delay(1000);
+      resetFunc(); //audio to .wav file
+    }
       
     buf_count += 1;
     audioIntervalCount += 1;
-//    
+    
 //    if(printDiags){
 //      Serial.print(".");
 //   }
@@ -657,7 +661,7 @@ void FileInit(){
   wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
   wav_hdr.dLen = nbufs_per_file * 256 * 2;
 
-  if(!frec.write((uint8_t *)&wav_hdr, 44)) resetFunc();
+  if(frec.write((uint8_t *)&wav_hdr, 44)!=44) resetFunc();
 
   Serial.print("Buffers: ");
   Serial.println(nbufs_per_file);
