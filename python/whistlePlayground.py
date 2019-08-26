@@ -116,14 +116,14 @@ for fileName in glob.glob('*.wav'):
     
 #    print(whistles)
 #    
-#    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
-#    plt.subplot(3,1,2)
-#    plt.plot(echoIndex)
-#    plt.subplot(3,1,3)
-#    plt.plot(toneIndex, '.')
-#    plt.subplot(3, 1, 1)
-#    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
-#    plt.show()
+    plt.plot(whistles, np.zeros(len(whistles)), 'bo')
+    plt.subplot(3,1,2)
+    plt.plot(echoIndex)
+    plt.subplot(3,1,3)
+    plt.plot(toneIndex, '.')
+    plt.subplot(3, 1, 1)
+    plt.specgram(y, NFFT=fftPts, Fs=Fs, noverlap=0, cmap=plt.cm.gist_heat)
+    plt.show()
     #plt.pause(1)
     
     whistleBinCount = np.count_nonzero(np.greater(toneIndex, 10));
