@@ -108,7 +108,7 @@ void manualSettings(){
 
     t = Teensy3Clock.get();
 
-    if (t - autoStartTime > 300) startRec = 1; //autostart if no activity for 5 minutes
+    if (t - autoStartTime > 60) startRec = 1; //autostart if no activity for 1 minutes
     switch (curSetting){
       case noSet:
         if (settingsChanged) {
