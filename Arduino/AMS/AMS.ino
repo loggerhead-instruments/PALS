@@ -295,7 +295,7 @@ void setup() {
   int getTimeTimeout = 0;
   // try to get time from Particle for up to 180 seconds
   while((getParticleTime()==0) & (getTimeTimeout<180)){
-    delay(1000);
+    delay(500);
     getTimeTimeout++;
   }
   Serial.print("Time status: ");
@@ -355,24 +355,23 @@ void setup() {
   digitalWrite(hydroPowPin, HIGH);
   mode = 0;
 
-  // create first folder to hold data
-  folderMonth = -1;  //set to -1 so when first file made will create directory
   //logFileHeader(); //write header to log file
   HWSERIAL.clear();
 
 
-      // Setup WDT
+    // Setup WDT
     noInterrupts();                                         // don't allow interrupts while setting up WDOG
     WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;                         // unlock access to WDOG registers
     WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
     delayMicroseconds(1);                                   // Need to wait a bit..
 
-    // for this demo, we will use 1 second WDT timeout (e.g. you must reset it in < 1 sec or a boot occurs)
-    WDOG_TOVALH = 0x006d;
-    WDOG_TOVALL = 0xdd00;
+    // 30 s timeout
+    // can only set this once
+    WDOG_TOVALH = 0x0CDF;
+    WDOG_TOVALL = 0xE600;
 
-    // This sets prescale clock so that the watchdog timer ticks at 7.2MHz
-    WDOG_PRESC  = 0x400;
+  //  Tick at 7.2 MHz
+  WDOG_PRESC  = 0x400;
 
     // Set options to enable WDT. You must always do this as a SINGLE write to WDOG_CTRLH
     WDOG_STCTRLH |= WDOG_STCTRLH_ALLOWUPDATE |
@@ -388,13 +387,7 @@ void setup() {
 int recLoopCount;  //for debugging when does not start record
   
 void loop() {
-  t = Teensy3Clock.get();
-
-  noInterrupts();  //   reset WDT
-  WDOG_REFRESH = 0xA602;
-  WDOG_REFRESH = 0xB480;
-  interrupts();
-        
+  t = Teensy3Clock.get();     
   
   //if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
   if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
@@ -526,6 +519,7 @@ void loop() {
       }
     }
   }
+  resetWDT();
   asm("wfi"); // reduce power between interrupts
 }
 
@@ -579,24 +573,26 @@ void stopRecording() {
 void FileInit(){
   // File logFile;
    t = Teensy3Clock.get();
+
    
-   if ((folderMonth != month(t)) | newCard){
-    newCard = 0;
-    if(printDiags) Serial.println("New Folder");
-    folderMonth = month(t);
-    sprintf(dirname, "%04d-%02d", year(t), folderMonth);
-    //file.dateTimeCallback(file_date_time);
-    sd.mkdir(dirname);
-   }
+//   if ((folderMonth != month(t)) | newCard){
+//    newCard = 0;
+//    if(printDiags) Serial.println("New Folder");
+//    folderMonth = month(t);
+//    sprintf(dirname, "%04d-%02d", year(t), folderMonth);
+//    //file.dateTimeCallback(file_date_time);
+//    sd.mkdir(dirname);
+//   }
    pinMode(vSense, INPUT);  // get ready to read voltage
 
    // get new filename
    int filenameIncrement = 0;
    // long filename
-   sprintf(filename,"%s/%02d-%02d-%02dT%02d%02d%02d_%s_%2.1f.wav", dirname, year(t), month(t), day(t), hour(t), minute(t), second(t), myIdHex, gainDb);  //filename is DDHHMM
+   sprintf(filename,"%02d-%02d-%02dT%02d%02d%02d_%s_%2.1f.wav", year(t), month(t), day(t), hour(t), minute(t), second(t), myIdHex, gainDb);  //filename is DDHHMM
    while (sd.exists(filename)){
+    resetWDT();
     filenameIncrement++;
-    sprintf(filename,"%s/%02d%02d%02d%02d_%d.wav", dirname, day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
+    sprintf(filename,"%02d%02d%02d%02d_%d.wav", day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
    }
    // short filename
    //sprintf(filename,"%s/%02d%02d%02d%02d.wav", dirname, day(t), hour(t), minute(t), second(t));  //filename is DDHHMM
@@ -653,6 +649,7 @@ void FileInit(){
    }
    
    while (!frec){
+    resetWDT();
     file_count += 1;
     sprintf(filename,"F%06d.wav",file_count); //if can't open just use count in root directory
     if(printDiags) Serial.println(filename);
@@ -742,6 +739,7 @@ void checkSD(){
   
   // find next card with files available
   while(filesPerCard[currentCard] == 0){
+    resetWDT();
     currentCard += 1;
     newCard = 1;
     if(currentCard == 4)  // all cards full
@@ -1036,5 +1034,12 @@ void resetSignals(){
   fftCount = 0;
   minPeakBin = 0;
   maxPeakBin = 0;
+}
+
+void resetWDT(){
+  noInterrupts();  //   reset WDT
+  WDOG_REFRESH = 0xA602;
+  WDOG_REFRESH = 0xB480;
+  interrupts();
 }
 

@@ -4,6 +4,7 @@ void checkSerial(){
   char buffer[80];
   // check if any data has arrived on the hardware serial port
   rd = HWSERIAL.available();
+  resetWDT();
   if (rd > 0) {
       // read data from the hardware serial port
       n = HWSERIAL.readBytes((char *)buffer, 1);
@@ -20,6 +21,7 @@ void checkSerial(){
 void packData(){
   float spectrumLevel;
   int iSpectrumLevel;
+  resetWDT();
     dataPacket = "{\"dt\":";
     dataPacket += t;
  
@@ -39,9 +41,6 @@ void packData(){
      }
      dataPacket += ",\"w\":";
      dataPacket += whistleCount;
-
-     dataPacket += ",\"cc\":";
-     dataPacket += currentCard;
 
      dataPacket += ",\"fr\":";
      dataPacket += filesPerCard[currentCard];
