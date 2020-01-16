@@ -451,15 +451,15 @@ bool audio_enable(int fs_mode)
 
   chipWrite(CHIP_ADCDAC_CTRL, 0x0008); // DAC mute right; DAC left unmute; ADC HPF normal operation
   
-  
-  chipWrite(CHIP_DAC_VOL, 0xFFFF); // dac mute right; DAC mute left
+  chipWrite(CHIP_DAC_VOL, 0xFF3C); // dac mute right; left 0 dB
+  //chipWrite(CHIP_DAC_VOL, 0xFFFF); // dac mute right; DAC mute left
   chipWrite(CHIP_ANA_HP_CTRL, 0x7F7F); // set headphone volume (lowest level)
   //chipWrite(CHIP_ANA_CTRL, 0x0036);  // enable zero cross detectors; line input
 
   chipWrite(DAP_AVC_CTRL, 0x0000); //no automatic volume control
  
-  chipWrite(CHIP_ANA_CTRL, 0x0114);  // lineout mute, headphone mute, no zero cross detectors, line input selected
-  //chipWrite(CHIP_ANA_CTRL, 0x0014);  // lineout unmute, headphone mute, no zero cross detectors, line input selected
+  //chipWrite(CHIP_ANA_CTRL, 0x0114);  // lineout mute, headphone mute, no zero cross detectors, line input selected
+  chipWrite(CHIP_ANA_CTRL, 0x0014);  // lineout unmute, headphone mute, no zero cross detectors, line input selected
   
   chipWrite(CHIP_MIC_CTRL, 0x0000); //microphone off
   
