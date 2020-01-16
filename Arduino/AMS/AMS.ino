@@ -16,7 +16,7 @@
 
 //*****************************************************************************************
 
-char codeVersion[12] = "2020-01-13";
+char codeVersion[12] = "2020-01-16";
 static boolean printDiags = 0;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
 #define MQ 100 // to be used with LHI record queue (modified local version)
@@ -121,6 +121,7 @@ int mode = 0;  // 0=stopped, 1=recording, 2=playing
 time_t startTime;
 time_t stopTime;
 time_t t;
+time_t lastTimeSet; // last time the clock was updated
 
 byte startHour, startMinute, endHour, endMinute; //used in Diel mode
 long dielRecSeconds;
@@ -241,6 +242,7 @@ void setup() {
   chipSelect[3] = CS4;
   
   Serial.begin(baud);
+  HWSERIAL.begin(baud);
   delay(500);
 
   RTC_CR = 0; // disable RTC
@@ -296,7 +298,22 @@ void setup() {
 
   cDisplay();
   display.println("Loggerhead");
+  display.setTextSize(1);
+  display.println("Getting Cell Time");
   display.display();
+  
+  // setSyncProvider does not seem to work...so doing manually from within loop to update time
+  //setSyncProvider(getParticleTime); //get RTC from Particle cell when available
+  //setSyncInterval(120); // sync RTC from particle this number of seconds
+  int getTimeTimeout = 0;
+  // try to get time from Particle for up to 180 seconds
+  while((getParticleTime()==0) & (getTimeTimeout<180)){
+    delay(500);
+    getTimeTimeout++;
+  }
+  Serial.print("Time status: ");
+  Serial.println(timeStatus());
+  t = Teensy3Clock.get();
   
 
   // Audio connections require memory, and the record queue
@@ -928,4 +945,44 @@ boolean checkCamDielTime(int offsetMinutes){
     }
   }
   return startCam;
+}
+
+
+time_t getParticleTime()
+{
+  // request time from cell
+  unsigned char dtr;
+  int rd, wr, n;
+  char buffer[12];
+  time_t particleTime;
+
+  if(printDiags) Serial.println("Time sync");
+
+  HWSERIAL.clear();
+  HWSERIAL.write("t"); // command to request time
+  HWSERIAL.flush();
+  
+  // check if any data has arrived on the hardware serial port
+  // time out if don't get expected number of bytes within timeout
+  int timeTimeOut = 100;
+  startTime = millis();
+  while((millis()-startTime) < timeTimeOut){
+    if(HWSERIAL.available()==10){
+          // read data from the hardware serial port
+          n = HWSERIAL.readBytes((char *)buffer, 10);  
+          particleTime = atoi(buffer);
+          
+          if(printDiags){    
+            Serial.print("elapsed (ms):");
+            Serial.println(millis()-startTime);
+            Serial.print("Particle: ");
+            Serial.println(particleTime);
+          }
+          Teensy3Clock.set(particleTime);
+          lastTimeSet = particleTime;
+          return particleTime;
+    }
+  }
+  
+  return 0; // unable to get Particle time
 }

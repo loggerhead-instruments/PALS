@@ -487,14 +487,8 @@ void audio_power_down(void){
 }
 
 void audio_power_up(void){
-  if(camFlag) {
     chipWrite(CHIP_ANA_POWER, 0x00AB); // power up: DAC; ADC; Mono (Left): Lineout amplifier; AB
     chipWrite(CHIP_DIG_POWER, 0x0063); // power up analag ADC, DAC, I2SIN, I2SOUT; disable DAP and IS2OUT
-  }
-  else{
-    chipWrite(CHIP_ANA_POWER, 0x00A2); // power up: adc Stereo = E2; Mono (Left): A2
-    chipWrite(CHIP_DIG_POWER, 0x0043); // power up only analag ADC and I2S; disable DAC and DAP
-  }
 }
 
 bool chipWrite(unsigned int reg, unsigned int val)
@@ -563,4 +557,3 @@ void I2S_modification(uint32_t fsamp, uint16_t nbits)
   //restart I2S
   I2S0_RCSR |= I2S_RCSR_RE | I2S_RCSR_BCE;
 }
-
