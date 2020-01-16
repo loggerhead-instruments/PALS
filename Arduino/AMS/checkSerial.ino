@@ -24,6 +24,9 @@ void packData(){
     dataPacket += t;
  
     for (int i=0; i<4; i++){
+      Serial.print("Mean Band:"); Serial.print(i); Serial.print(" ");
+      Serial.print(meanBand[i]); Serial.print(" ");
+      Serial.println(fftCount);
           if(meanBand[i]>0.00001){
             spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth)); 
           }
@@ -40,8 +43,8 @@ void packData(){
      dataPacket += ",\"w\":";
      dataPacket += whistleCount;
 
-     dataPacket += ",\"fr\":";
-     dataPacket += filesPerCard[currentCard];
+//     dataPacket += ",\"fr\":";
+//     dataPacket += filesPerCard[currentCard];
      
      dataPacket += "}";
 

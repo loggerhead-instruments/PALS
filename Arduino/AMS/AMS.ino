@@ -20,7 +20,7 @@ char codeVersion[12] = "2020-01-16";
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
 #define MQ 100 // to be used with LHI record queue (modified local version)
-int roundSeconds = 60;//start time modulo to nearest roundSeconds
+int roundSeconds = 300;//start time modulo to nearest roundSeconds
 int wakeahead = 5;  //wake from snooze to give hydrophone and camera time to power up
 int noDC = 0; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
 float hydroCal = -180.0;
@@ -101,7 +101,7 @@ const int displayPow = 6;
 int chipSelect[4];
 uint32_t freeMB[4];
 uint32_t filesPerCard[4];
-int currentCard = 0;
+volatile int currentCard = 0;
 boolean newCard = 0;
 
 // Pins used by audio shield
@@ -493,6 +493,7 @@ void loop() {
     // Automated signal processing
     //
     if(fftFlag & fft256_1.available()){
+    
       
       // whistle detection
       float maxV = fft256_1.read(whistleLow);
