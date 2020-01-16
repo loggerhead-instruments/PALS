@@ -35,7 +35,7 @@ int ProcCmd(char *pCmd)
          NewTime.day = tday;
          NewTime.month = tmonth;
          NewTime.year = tyear-2000;
-         ULONG newtime=RTCToUNIXTime(&NewTime);  //get new time in seconds
+         unsigned long newtime=RTCToUNIXTime(&NewTime);  //get new time in seconds
          startTime=RTCToUNIXTime(&NewTime);
          Teensy3Clock.set(newtime); 
          Serial.print("Clock Set: ");
@@ -61,6 +61,15 @@ int ProcCmd(char *pCmd)
       {
         sscanf(&pCmd[3],"%d",&lv1);
         gainSetting = lv1;
+        if((gainSetting<0) | (gainSetting>15)) gainSetting = 4;
+        EEPROM.write(15, gainSetting); //byte
+        break;
+      }
+      
+      case ('N' + ('D'<<8)):
+      {
+        sscanf(&pCmd[3],"%d",&lv1);
+        noDC = lv1;
         break;
       }
       
@@ -90,15 +99,20 @@ boolean LoadScript()
   char c;
   short i;
 
+#if USE_SDFS==1
+  FsFile file;
+#else
   File file;
+#endif
   unsigned long TM_byte;
   int comment_TM = 0;
 
   // Read card setup.txt file to set date and time, recording interval
-  file=sd.open("setup.txt");
- if(file)
- {
-   do{
+  sd.chdir(); // only to be sure to star from root
+  file.open("setup.txt");
+  if(file)
+  {
+    do{
       	i = 0;
       	s[i] = 0;
         do{
@@ -118,16 +132,20 @@ boolean LoadScript()
       	  }
       }while(file.available());
       file.close();  
+
       
       // comment out TM line if it exists
       if (comment_TM)
       {
         Serial.print("Comment TM ");
         Serial.println(TM_byte);
-        file = sd.open("setup.txt", FILE_WRITE);
+        
+        sd.chdir(); // only to be sure to star from root
+        file.open("setup.txt", FILE_WRITE); // WMXZ check mod
         file.seek(TM_byte);
         file.print("//");
         file.close();
+
       }
       
   }
@@ -139,6 +157,3 @@ boolean LoadScript()
   }
  return 1;	
 }
-
-
-

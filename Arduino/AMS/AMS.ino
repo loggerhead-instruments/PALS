@@ -1,29 +1,47 @@
 //
-// AMS acoustic monitoring station
-// Use LS1 libraries
+// LS1 acoustic recorder
 //
 // Loggerhead Instruments
-// 2017-2019
+// 2016-2020
 // David Mann
+
 // 
-// Modified from PJRC audio code and Snap code
+// Modified from PJRC audio code
 // http://www.pjrc.com/store/teensy3_audio.html
 //
+// Compile with 96 MHz Fastest
 
-// Compile with 72 MHz Optimize Fastest
+// Modified by WMXZ 15-05-2018 for SdFS anf multiple sampling frequencies
+// Optionally uses SdFS from Bill Greiman https://github.com/greiman/SdFs; but has higher current draw in sleep
 
-//#include <SerialFlash.h>
-#include <Audio.h>  //comment out includes SD.h from play_sd_
+//*****************************************************************************************
+
+char codeVersion[12] = "2020-01-13";
+static boolean printDiags = 0;  // 1: serial print diagnostics; 0: no diagnostics
+int camFlag = 0;
+#define MQ 100 // to be used with LHI record queue (modified local version)
+int roundSeconds = 60;//start time modulo to nearest roundSeconds
+int wakeahead = 5;  //wake from snooze to give hydrophone and camera time to power up
+int noDC = 0; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
+//*****************************************************************************************
+
+
+#include "LHI_record_queue.h"
+#include "control_sgtl5000.h"
+
+#include <Audio.h>  //this also includes SD.h from lines 89 & 90
+
 #include <Wire.h>
 #include <SPI.h>
 #include "SdFat.h"
-#include "amx32.h"
+
+
 #include <Snooze.h>  //using https://github.com/duff2013/Snooze; uncomment line 62 #define USE_HIBERNATE
+
 #include <TimeLib.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <EEPROM.h>
-//#include <TimerOne.h>
 
 #define CPU_RESTART_ADDR (uint32_t *)0xE000ED0C
 #define CPU_RESTART_VAL 0x5FA0004
@@ -31,26 +49,15 @@
 
 #define OLED_RESET -1
 Adafruit_SSD1306 display(OLED_RESET);
-#define BOTTOM 57
+#define BOTTOM 55
 
 // set this to the hardware serial port you wish to use
 #define HWSERIAL Serial1
 
-//*********************************************************
-//
-static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
-int camFlag = 0;
-long rec_dur = 300;
-long rec_int = 0;
-int fftFlag = 1;
-int roundSeconds = 300;//modulo to nearest x seconds
-float hydroCal = -180.0;
-int wakeahead = 20;  //wake from snooze to give hydrophone and camera time to power up
-//
-//***********************************************************
+#define NREC 32 // increase disk buffer to speed up disk access
 
 static uint8_t myID[8];
-char myIdHex[20];
+
 unsigned long baud = 115200;
 
 #define SECONDS_IN_MINUTE 60
@@ -64,24 +71,23 @@ unsigned long baud = 115200;
 
 // GUItool: begin automatically generated code
 AudioInputI2S            i2s2;           //xy=105,63
-AudioAnalyzeFFT256       fft256_1; 
-AudioRecordQueue         queue1;         //xy=281,63
+LHIRecordQueue           queue1;         //xy=281,63
 AudioConnection          patchCord1(i2s2, 0, queue1, 0);
-AudioConnection          patchCord2(i2s2, 0, fft256_1, 0);
 AudioControlSGTL5000     sgtl5000_1;     //xy=265,212
 // GUItool: end automatically generated code
 
 const int myInput = AUDIO_INPUT_LINEIN;
 int gainSetting = 4; //default gain setting; can be overridden in setup file
 
-// LS1 Pins
-const int hydroPowPin = 2;
+
+// Pin Assignments
 const int UP = 4;
-const int DOWN = 3; 
+const int DOWN = 3;
 const int SELECT = 8;
-const int displayPow = 6;
-const int CAM_SW = 5;
+const int hydroPowPin = 2;
 const int vSense = 16; 
+const int CAM_SW = 5;
+const int displayPow = 6;
 
 // microSD chip select pins
 #define CS1 10
@@ -93,11 +99,6 @@ uint32_t freeMB[4];
 uint32_t filesPerCard[4];
 int currentCard = 0;
 boolean newCard = 0;
-
-SdFat sd;
-SdFile file;
-char filename[100];
-char dirname[10];
 
 // Pins used by audio shield
 // https://www.pjrc.com/store/teensy3_audio.html
@@ -120,22 +121,29 @@ int mode = 0;  // 0=stopped, 1=recording, 2=playing
 time_t startTime;
 time_t stopTime;
 time_t t;
-time_t burnTime;
-time_t lastTimeSet; // last time the clock was updated
+
 byte startHour, startMinute, endHour, endMinute; //used in Diel mode
+long dielRecSeconds;
 
 boolean CAMON = 0;
 boolean audioFlag = 1;
 
 boolean LEDSON=1;
-boolean introPeriod=1;  //flag for introductory period; used for writing FFT info to log
+boolean introperiod=1;  //flag for introductory period; used for keeping LED on for a little while
 
-float audio_srate = 44100.0;
+int32_t lhi_fsamps[9] = {8000, 16000, 32000, 44100, 48000, 96000, 200000, 250000, 300000};
+#define I_SAMP 8   // 0 is 8 kHz; 1 is 16 kHz; 2 is 32 kHz; 3 is 44.1 kHz; 4 is 48 kHz; 5 is 96 kHz; 6 is 192 kHz
 
-float audioIntervalSec = 256.0 / audio_srate; //buffer interval in seconds
-unsigned int audioIntervalCount = 0;
+float audio_srate = lhi_fsamps[I_SAMP];
+int isf = 4; // default to 48 kHz
+
+//WMXZ float audioIntervalSec = 256.0 / audio_srate; //buffer interval in seconds
+//WMXZ unsigned int audioIntervalCount = 0;
+float gainDb;
 
 int recMode = MODE_NORMAL;
+long rec_dur = 10;
+long rec_int = 30;
 
 int snooze_hour;
 int snooze_minute;
@@ -144,21 +152,53 @@ int buf_count;
 long nbufs_per_file;
 boolean settingsChanged = 0;
 
-float mAmpRec = 70;
-float mAmpSleep = 4;
-float mAmpCam = 600;
-float mAhTotal = 12000 * 4; // assume 12Ah per battery pack
-
 long file_count;
-
+char filename[40];
+char dirname[20];
 int folderMonth;
-//SnoozeBlock snooze_config;
+
 SnoozeAlarm alarm;
 SnoozeAudio snooze_audio;
 SnoozeBlock config_teensy32(snooze_audio, alarm);
 
-// The file where data is recorded
-File frec;
+
+// SD_FAT_TYPE = 0 for SdFat/File as defined in SdFatConfig.h,
+// 1 for FAT16/FAT32, 2 for exFAT, 3 for FAT16/FAT32 and exFAT.
+#define SD_FAT_TYPE 3
+const uint8_t SD_CS_PIN = 10;
+#define SPI_CLOCK SD_SCK_MHZ(50)
+
+// Try to select the best SD card configuration.
+#if HAS_SDIO_CLASS
+#define SD_CONFIG SdioConfig(FIFO_SDIO)
+#elif ENABLE_DEDICATED_SPI
+#define SD_CONFIG SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SPI_CLOCK)
+#else  // HAS_SDIO_CLASS
+#define SD_CONFIG SdSpiConfig(SD_CS_PIN, SHARED_SPI, SPI_CLOCK)
+#endif  // HAS_SDIO_CLASS
+
+// Set PRE_ALLOCATE true to pre-allocate file clusters.
+const bool PRE_ALLOCATE = true;
+
+// Set SKIP_FIRST_LATENCY true if the first read/write to the SD can
+// be avoid by writing a file header or reading the first record.
+const bool SKIP_FIRST_LATENCY = true;
+
+#if SD_FAT_TYPE == 0
+SdFat sd;
+File file;
+#elif SD_FAT_TYPE == 1
+SdFat32 sd;
+File32 file;
+#elif SD_FAT_TYPE == 2
+SdExFat sd;
+ExFile file;
+#elif SD_FAT_TYPE == 3
+SdFs sd;
+FsFile file;
+#else  // SD_FAT_TYPE
+#error Invalid SD_FAT_TYPE
+#endif  // SD_FAT_TYPE
 
 typedef struct {
     char    rId[4];
@@ -177,62 +217,36 @@ typedef struct {
 } HdrStruct;
 
 HdrStruct wav_hdr;
-unsigned int rms;
 
 unsigned char prev_dtr = 0;
 
-// define bands to measure acoustic signals
-int fftPoints = 256; // 5.8 ms at 44.1 kHz
-float binwidth = audio_srate / fftPoints; //256 point FFT; = 172.3 Hz for 44.1kHz
-float fftDurationMs = 1000.0 / binwidth;
-long fftCount;
-float meanBand[4]; // mean band valuesd
-int bandLow[4]; // band low frequencies
-int bandHigh[4];
-int nBins[4]; // number of FFT bins in each band
-int whistleCount = 0;
-int whistleLow = (int) 5000.0 / binwidth; // low frequency bin to start looking for whistles
-int whistleHigh = (int) 16000.0 / binwidth; // high frequency bin to stop looking for whistles
-int oldPeakBin; //for keeping track of peak frequency
-int whistleDelta = 500.0 / binwidth;  // adajcent bins need to be within x Hz of each other to add to runLength
-int runLength = 0;
-int minRunLength = 300.0 / fftDurationMs; // minimium run length to count as whistle
-int fmThreshold = (int) 1000.0 / binwidth; // candidate whistle must cover this number of bins
-int minPeakBin; // minimum frequency in a run length use to make sure whistle crosses enough bins
-int maxPeakBin; // maximum frequency in a run length use to make sure whistle crosses enough bins
-String dataPacket; // data packed for Particle transmission after each file
-
-float gainDb;
+struct TIME_HEAD
+{
+  byte  sec;  
+  byte  minute;  
+  byte  hour;  
+  byte  day;  
+  byte  month;  
+    byte NU[3];
+  int16_t year;  
+  int16_t tzOffset; //offset from GMT 
+};
 
 void setup() {
   read_myID();
-
-  bandLow[0] = 1; // start at 172 Hz to eliminate wave noise
-  bandHigh[0] = (int) 1000 / binwidth;
-  bandLow[1] = bandHigh[0];
-  bandHigh[1] = (int) 2000 / binwidth;
-  bandLow[2] = (int) bandHigh[1];
-  bandHigh[2] = (int) 5000 / binwidth;
-  bandLow[3] = bandHigh[2];
-  bandHigh[3] = (int) 20000 / binwidth;
-  for(int i=0; i<4; i++){
-    nBins[i] = bandHigh[i] - bandLow[i];
-  }
 
   chipSelect[0] = CS1;
   chipSelect[1] = CS2;
   chipSelect[2] = CS3;
   chipSelect[3] = CS4;
-
-
+  
   Serial.begin(baud);
-  HWSERIAL.begin(baud);
   delay(500);
 
-  // change capacitance to 26 pF (12.5 pF load capacitance)
   RTC_CR = 0; // disable RTC
   delay(100);
-  Serial.println(RTC_CR,HEX);
+  //Serial.println(RTC_CR,HEX);
+  // change capacitance to 26 pF (12.5 pF load capacitance)
   RTC_CR = RTC_CR_SC16P | RTC_CR_SC8P | RTC_CR_SC2P; 
   delay(100);
   RTC_CR = RTC_CR_SC16P | RTC_CR_SC8P | RTC_CR_SC2P | RTC_CR_OSCE;
@@ -242,83 +256,80 @@ void setup() {
   Serial.println(RTC_CR,HEX);
   Serial.println(RTC_LR,HEX);
 
-  if(printDiags){
-    Serial.print("binwidth: ");
-    Serial.println(binwidth);
-    Serial.print("FFT duration (ms): ");
-    Serial.println(fftDurationMs);
-    Serial.print("minRunLength: ");
-    Serial.println(minRunLength);
-    Serial.print("whistleDelta: ");
-    Serial.println(whistleDelta);
-    Serial.print("Whistle Low Freq Bin: ");
-    Serial.println(whistleLow);
-    Serial.print("Whistle High Freq Bin: ");
-    Serial.println(whistleHigh);
-  }
+  Serial.println(RTC_TSR);
+  delay(1000);
+  Serial.println(RTC_TSR);
+  delay(1000);
+  Serial.println(RTC_TSR);
   
   Wire.begin();
 
-  pinMode(hydroPowPin, OUTPUT);
   pinMode(displayPow, OUTPUT);
-  pinMode(CAM_SW, OUTPUT);
-  cam_wake();
+  digitalWrite(displayPow, HIGH);
 
   pinMode(vSense, INPUT);
   analogReference(DEFAULT);
+  
+  pinMode(hydroPowPin, OUTPUT);
+  digitalWrite(hydroPowPin, HIGH);
 
-  digitalWrite(hydroPowPin, LOW);
-  digitalWrite(displayPow, HIGH);
+  // camera setup
+  pinMode(CAM_SW, OUTPUT);
   digitalWrite(CAM_SW, LOW);
+  if(camFlag==1) wakeahead = 30; // give camera time to boot
   
   //setup display and controls
-  pinMode(UP, INPUT);
-  pinMode(DOWN, INPUT);
-  pinMode(SELECT, INPUT);
-  digitalWrite(UP, HIGH);
-  digitalWrite(DOWN, HIGH);
-  digitalWrite(SELECT, HIGH);
+  pinMode(UP, INPUT_PULLUP);
+  pinMode(DOWN, INPUT_PULLUP);
+  pinMode(SELECT, INPUT_PULLUP);
+  
+  //setSyncProvider(getTeensy3Time); //use Teensy RTC to keep time
+  t = getTeensy3Time();
+  if (t < 1451606400) Teensy3Clock.set(1451606400);
 
-  delay(500);    
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
-  delay(100);
+  delay(140);
+  cDisplay();
+  display.println("Loggerhead");
+  display.display();
+
 
   cDisplay();
   display.println("Loggerhead");
-  display.setTextSize(1);
-  display.println("Getting Cell Time");
   display.display();
-
-  // setSyncProvider does not seem to work...so doing manually from within loop to update time
-  //setSyncProvider(getParticleTime); //get RTC from Particle cell when available
-  //setSyncInterval(120); // sync RTC from particle this number of seconds
-  int getTimeTimeout = 0;
-  // try to get time from Particle for up to 180 seconds
-  while((getParticleTime()==0) & (getTimeTimeout<180)){
-    delay(50);
-    getTimeTimeout++;
-  }
-  Serial.print("Time status: ");
-  Serial.println(timeStatus());
-  t = Teensy3Clock.get();
   
 
+  // Audio connections require memory, and the record queue
+  // uses this memory to buffer incoming audio.
+  // initialize now to estimate DC offset during setup
+  AudioMemory(MQ+10);
+  
+  audio_srate = lhi_fsamps[isf];
+//WMXZ  audioIntervalSec = 256.0 / audio_srate; //buffer interval in seconds
+
+  AudioInit(isf); // load current gain setting
   manualSettings();
-  SdFile::dateTimeCallback(file_date_time);
-  
-  digitalWrite(hydroPowPin, LOW); // make sure hydrophone powered off when in manual settings in case of accidental reset
+  audio_srate = lhi_fsamps[isf];
+  AudioInit(isf); // set with new settings
+
+  logFileHeader();
   
   cDisplay();
+
+
+  if(rec_int > 60) roundSeconds = 60;
+  if(rec_int > 300) roundSeconds = 300;
   
-  t = Teensy3Clock.get();
+  t = getTeensy3Time();
   startTime = t;
+  //startTime = getTeensy3Time();
   startTime -= startTime % roundSeconds;  
   startTime += roundSeconds; //move forward
   stopTime = startTime + rec_dur;  // this will be set on start of recording
+
+  if (recMode==MODE_DIEL) setDielTime();  // adjust start time to diel mode
   
-  if (recMode==MODE_DIEL) checkDielTime();  
-  
-  nbufs_per_file = (long) (rec_dur * audio_srate / 256.0);
+  nbufs_per_file = (long) (ceil(((rec_dur * audio_srate / 256.0) / (float) NREC)) * (float) NREC);
   long ss = rec_int - wakeahead;
   if (ss<0) ss=0;
   snooze_hour = floor(ss/3600);
@@ -344,40 +355,12 @@ void setup() {
   long time_to_first_rec = startTime - t;
   Serial.print("Time to first record ");
   Serial.println(time_to_first_rec);
-
-  // Audio connections require memory, and the record queue
-  // uses this memory to buffer incoming audio.
-  AudioMemory(100);
-  AudioInit(); // this calls Wire.begin() in control_sgtl5000.cpp
-  audio_bypass_adc_hp();
-  fft256_1.averageTogether(1); // number of FFTs to average together
   
-  digitalWrite(hydroPowPin, HIGH);
   mode = 0;
 
-  //logFileHeader(); //write header to log file
-  HWSERIAL.clear();
-
-//
-//    // Setup WDT
-//    noInterrupts();                                         // don't allow interrupts while setting up WDOG
-//    WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;                         // unlock access to WDOG registers
-//    WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
-//    delayMicroseconds(1);                                   // Need to wait a bit..
-//
-//    // 30 s timeout
-//    // can only set this once
-//    WDOG_TOVALH = 0x0CDF;
-//    WDOG_TOVALL = 0xE600;
-//
-//  //  Tick at 7.2 MHz
-//  WDOG_PRESC  = 0x400;
-//
-//    // Set options to enable WDT. You must always do this as a SINGLE write to WDOG_CTRLH
-//    WDOG_STCTRLH |= WDOG_STCTRLH_ALLOWUPDATE |
-//        WDOG_STCTRLH_WDOGEN | WDOG_STCTRLH_WAITEN |
-//        WDOG_STCTRLH_STOPEN | WDOG_STCTRLH_CLKSRC;
-//    interrupts();
+  // create first folder to hold data
+  folderMonth = -1;  //set to -1 so when first file made will create directory
+  checkSD();
 }
 
 //
@@ -387,13 +370,10 @@ void setup() {
 int recLoopCount;  //for debugging when does not start record
   
 void loop() {
-  t = Teensy3Clock.get();     
-  
-  //if((hour(t)==0) & (minute(t)==1) & (second(t)==13) & (lastTimeSet!=t)) getParticleTime(); // update time from Particle every so often
-  if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
   // Standby mode
   if(mode == 0)
   {
+      t = getTeensy3Time();
       cDisplay();
       display.println("Next Start");
       display.setTextSize(1);
@@ -402,29 +382,61 @@ void loop() {
       display.print(currentCard + 1);
       display.print(" ");
       display.print(filesPerCard[currentCard]);
-      displayClock(startTime, 40, 1);
-      displayClock(t, BOTTOM, 1);
+      displayClock(startTime, 40);
+      displayClock(t, BOTTOM);
       display.display();
 
-      if((t >= startTime - 1) & CAMON==1){ //start camera 1 second before to give a chance to get going
-        if (camFlag)  cam_start();
+      // turn on camera 30 seconds ahead of time if it is off
+      if((t >= startTime - wakeahead) & CAMON==0 & camFlag){ 
+        if(recMode==MODE_NORMAL) cam_wake();
+        if(recMode==MODE_DIEL & checkCamDielTime(1)) cam_wake();
       }
+
       if(t >= startTime){      // time to start?
+        if(noDC==0) {
+          audio_freeze_adc_hp(); // this will lower the DC offset voltage, and reduce noise
+        }
+        if(noDC==2){
+          audio_bypass_adc_hp();
+         }
         Serial.println("Record Start.");
         
-        stopTime = startTime + rec_dur;
-        startTime = stopTime + rec_int;
-        if (recMode==MODE_DIEL) checkDielTime();
+        if (camFlag){
+          // start camera if normal record mode, or if diel mode and within time range
+          // needs to be called before next startTime is calculated
+          if(recMode==MODE_NORMAL | checkCamDielTime(0)==1) cam_start();
+        }
+
+        // set current stop time and calculate next startTime
+        if(recMode==MODE_NORMAL){
+          stopTime = startTime + rec_dur;
+          startTime = stopTime + rec_int;
+        }
+        
+        if(recMode==MODE_DIEL){
+          if (rec_int==0){
+             stopTime = startTime + dielRecSeconds;
+             startTime = startTime + (24*3600); // increment startTime by 1 day
+             Serial.print("New diel stop:");
+             printTime(stopTime);
+          }
+          else{
+            stopTime = startTime + rec_dur;
+            startTime = stopTime + rec_int;
+            setDielTime(); // make sure new start is in diel window
+          }
+        }
+        
 
         Serial.print("Current Time: ");
-        printTime(Teensy3Clock.get());
+        printTime(getTeensy3Time());
         Serial.print("Stop Time: ");
         printTime(stopTime);
         Serial.print("Next Start:");
         printTime(startTime);
 
         mode = 1;
-        fftCount = 0;  
+        display.ssd1306_command(SSD1306_DISPLAYOFF); // turn off display during recording
         startRecording();
       }
   }
@@ -433,123 +445,117 @@ void loop() {
   // Record mode
   if (mode == 1) {
     continueRecording();  // download data  
-    
-    //
-    // Automated signal processing
-    //
-    if(fftFlag & fft256_1.available()){
-      
-      // whistle detection
-      float maxV = fft256_1.read(whistleLow);
-      float newV;
-      int peakBin;
 
-      // find peak frequency
-      for(int i=whistleLow+1; i<whistleHigh; i++){
-        newV = fft256_1.read(i);
-        if (newV > maxV){
-          maxV = newV;
-          peakBin = i;
-        }
-      }
-
-      // track minimum and maximum peakBins during run
-      if((peakBin < minPeakBin) | (minPeakBin==0)) minPeakBin = peakBin; 
-      if((peakBin > maxPeakBin) | (maxPeakBin==0)) maxPeakBin = peakBin;
-
-      // increment runLength if new peak is withing whistleDelta of old peak
-      if(abs(peakBin - oldPeakBin) < whistleDelta){
-        runLength += 1;
-      }
-      else{  // end of run, check if long enough and covered enough frequency bins
-        if((runLength >= minRunLength) & (maxPeakBin - minPeakBin > fmThreshold)) {
-          if (printDiags){
-            Serial.print(runLength * fftDurationMs);
-            Serial.print(" ");
-          }
-          whistleCount++;
-        }
-        runLength = 1;
-        maxPeakBin = 0; // reset peak bins after end of run
-        minPeakBin = 0;
-      }
-      oldPeakBin = peakBin;
-
-      // calculate band level noise
-      fftCount += 1;  // counter to divide meanBand by before sending to cell
-      for(int n=0; n<4; n++){
-        for(int i=bandLow[n]; i<bandHigh[n]; i++){
-          meanBand[n] += (fft256_1.read(i) / nBins[n]); // accumulate across band
-        }
-      }
+    if(digitalRead(UP)==0 & digitalRead(DOWN)==0){
+      // stop recording
+      queue1.end();
+      // update wav file header
+      wav_hdr.rLen = 36 + buf_count * 256 * 2;
+      wav_hdr.dLen = buf_count * 256 * 2;
+      file.seek(0);
+      file.write((uint8_t *)&wav_hdr, 44);
+      file.close();
+      if(camFlag) cam_off(); //camera off
+      display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
+      delay(100);
+      cDisplay();
+      display.println("Stopped");
+      display.setTextSize(1);
+      display.println("Safe to turn off");
+      display.display();
+      while(1);
     }
-    //
-    // End automated signal processing
-    //
-
-    // if continuous recording, start new file based on time
-    if(rec_int==0){
-      t = Teensy3Clock.get();
-      if(t>=stopTime){
-        startTime = stopTime;
-        stopTime = startTime + rec_dur;
-        frec.close();
-        introPeriod = 0;
-       
-        if(printDiags) {
-          Serial.print("Buffers rec:");
-          Serial.println(buf_count);
-        }
+    
+    if(buf_count >= nbufs_per_file){       // time to stop?
+      if(((rec_int == 0) & (recMode==MODE_NORMAL)) | ((rec_int == 0) & (recMode==MODE_DIEL) & (getTeensy3Time()<stopTime))){
+        file.close();
         checkSD();
         FileInit();  // make a new file
         buf_count = 0;
-        if(fftFlag) resetSignals();
+        if(printDiags) {
+          Serial.print("Audio Mem: ");
+          Serial.println(AudioMemoryUsageMax());
+        }
       }
-    }
-    else{
-      if((buf_count >= nbufs_per_file)){       // time to stop for interval recording?
-        if(fftFlag) summarizeSignals();
-          introPeriod = 0;
-          stopRecording();
-          checkSD();
-          if(fftFlag) resetSignals();
-       
-          display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
-          mode = 0;  // standby mode
+      else{
+        stopRecording();
+        checkSD();
+        long ss = startTime - getTeensy3Time() - wakeahead;
+        if (ss<0) ss=0;
+        snooze_hour = floor(ss/3600);
+        ss -= snooze_hour * 3600;
+        snooze_minute = floor(ss/60);
+        ss -= snooze_minute * 60;
+        snooze_second = ss;
+        
+        if( (snooze_hour * 3600) + (snooze_minute * 60) + snooze_second >=10){
+            digitalWrite(hydroPowPin, LOW); //hydrophone off
+            audio_power_down();  // when this is activated, seems to occassionally have trouble restarting; no LRCLK signal or RX on Teensy
+            if(camFlag & (CAMON>0)) cam_off(); //camera off if it got turned on
+            if(printDiags){
+              Serial.print("Snooze HH MM SS ");
+              Serial.print(snooze_hour);
+              Serial.print(snooze_minute);
+              Serial.println(snooze_second);
+              Serial.flush(); // make sure empty so doesn't prematurely wake
+            }           
+            delay(100);
+
+            alarm.setRtcTimer(snooze_hour, snooze_minute, snooze_second); // to be compatible with new snooze library
+            Snooze.sleep(config_teensy32); 
+
+            /// ... Sleeping ....
+            
+            // Waking up
+           // if (printDiags==0) usbDisable();
+
+            digitalWrite(hydroPowPin, HIGH); // hydrophone on
+            delay(300);  // give time for Serial to reconnect to USB
+            if(camFlag) cam_wake();
+            AudioInit(isf);
+            
+            //audio_power_up();  // when use audio_power_down() before sleeping, does not always get LRCLK. This did not fix.  
+         }
+         else{
+          if(camFlag & (CAMON>0)) cam_stop();
+         }
+
+        display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
+        mode = 0;  // standby mode
       }
     }
   }
-  // resetWDT();
   asm("wfi"); // reduce power between interrupts
 }
 
 void startRecording() {
   if (printDiags)  Serial.println("startRecording");
   FileInit();
-  display.ssd1306_command(SSD1306_DISPLAYOFF); // turn off display during recording after FileInit, so can see if problem
   buf_count = 0;
   queue1.begin();
   if (printDiags)  Serial.println("Queue Begin");
 }
 
+
+byte buffer[NREC*512];
 void continueRecording() {
-  if (queue1.available() >= 2) {
-    byte buffer[512];
-    // Fetch 2 blocks from the audio library and copy
-    // into a 512 byte buffer.  The Arduino SD library
-    // is most efficient when full 512 byte sector size
+  if (queue1.available() >= NREC*2) {
+    // Fetch 2 blocks (or multiples) from the audio library and copy
+    // into a 512 byte buffer.  micro SD disk access
+    // is most efficient when full (or multiple of) 512 byte sector size
     // writes are used.
     //digitalWrite(ledGreen, HIGH);
-    memcpy(buffer, queue1.readBuffer(), 256);
-    queue1.freeBuffer();
-    memcpy(buffer+256, queue1.readBuffer(), 256);
-    queue1.freeBuffer();
-    if(frec.write(buffer, 512)==-1) {
-      resetFunc(); //audio to .wav file
+    for(int ii=0;ii<NREC;ii++)
+    { byte *ptr = buffer+ii*512;
+      memcpy(ptr, queue1.readBuffer(), 256);
+      queue1.freeBuffer();
+      memcpy(ptr+256, queue1.readBuffer(), 256);
+      queue1.freeBuffer();
     }
+    if(file.write(buffer, NREC*512)==-1) resetFunc(); //audio to .wav file
       
-    buf_count += 1;
-    audioIntervalCount += 1;
+    buf_count += NREC;
+//WMXZ    audioIntervalCount += NREC;
     
 //    if(printDiags){
 //      Serial.print(".");
@@ -566,244 +572,153 @@ void stopRecording() {
   queue1.end();
   //queue1.clear();
   AudioMemoryUsageMaxReset();
-  //frec.timestamp(T_WRITE,(uint16_t) year(t),month(t),day(t),hour(t),minute(t),second);
-  frec.close();
+  //file.timestamp(T_WRITE,(uint16_t) year(t),month(t),day(t),hour(t),minute(t),second);
+  file.close();
+  delay(100);
 }
 
-void FileInit(){
-  // File logFile;
-   t = Teensy3Clock.get();
 
+void FileInit()
+{
+   t = getTeensy3Time();
    
-//   if ((folderMonth != month(t)) | newCard){
-//    newCard = 0;
-//    if(printDiags) Serial.println("New Folder");
-//    folderMonth = month(t);
-//    sprintf(dirname, "%04d-%02d", year(t), folderMonth);
-//    //file.dateTimeCallback(file_date_time);
-//    sd.mkdir(dirname);
-//   }
+   if (folderMonth != month(t)){
+    if(printDiags) Serial.println("New Folder");
+    folderMonth = month(t);
+    sprintf(dirname, "/%04d-%02d", year(t), folderMonth);
+    #if USE_SDFS==1
+      FsDateTime::callback = file_date_time;
+    #else
+      SdFile::dateTimeCallback(file_date_time);
+    #endif
+    sd.mkdir(dirname);
+   }
    pinMode(vSense, INPUT);  // get ready to read voltage
 
-   // get new filename
-   int filenameIncrement = 0;
-   // long filename
-   sprintf(filename,"%02d-%02d-%02dT%02d%02d%02d_%s_%2.1f.wav", year(t), month(t), day(t), hour(t), minute(t), second(t), myIdHex, gainDb);  //filename is DDHHMM
-   while (sd.exists(filename)){
-    // resetWDT();
-    filenameIncrement++;
-    sprintf(filename,"%02d%02d%02d%02d_%d.wav", day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
-   }
-   // short filename
-   //sprintf(filename,"%s/%02d%02d%02d%02d.wav", dirname, day(t), hour(t), minute(t), second(t));  //filename is DDHHMM
-   if(printDiags) Serial.println(filename);
-  /*
+   // open file 
+   sd.chdir(dirname);
+   sprintf(filename,"%04d%02d%02dT%02d%02d%02d.wav", year(t), month(t), day(t), hour(t), minute(t), second(t));  //filename is DDHHMMSS
+
+
+   // log file
+  #if USE_SDFS==1
+    FsDateTime::callback = file_date_time;
+  #else
+    SdFile::dateTimeCallback(file_date_time);
+  #endif
+
    float voltage = readVoltage();
-   if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-    if((introPeriod==0) & (fftFlag==1)){
-        for (int i=0; i<4; i++){
-          logFile.print(',');
-          if(meanBand[i]>0.00001){
-            float spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
-            spectrumLevel = spectrumLevel - hydroCal - gainDb;
-            logFile.print(spectrumLevel);
-          }
-           else{
-            logFile.print("-100");
-           }
-        }
-        logFile.print(',');
-        logFile.println(whistleCount); 
-      }
-      logFile.print(filename);
-      logFile.print(',');
+   
+  sd.chdir(); // only to be sure to start from root
+  #if USE_SDFS==1
+    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+  #else
+    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+  #endif
+      file.print(filename);
+      file.print(',');
       for(int n=0; n<8; n++){
-        logFile.print(myID[n]);
+        file.print(myID[n]);
       }
-      logFile.print(',');
-      logFile.print(gainDb); 
-      logFile.print(',');
-      logFile.print(voltage); 
+      file.print(',');
+      file.print(gainDb); 
+      file.print(',');
+      file.print(voltage); 
+      file.print(',');
+      file.println(codeVersion);
+      if(voltage < 3.1){
+        if (camFlag){
+          cam_off();
+          camFlag = 0;
+          file.println("Camera off.");
+        }
+      }
       if(voltage < 3.0){
-        logFile.println("Stopping because Voltage less than 3.0 V");
-        logFile.close();  
+        file.println("Stopping because Voltage less than 3.0 V");
+        file.close();  
         // low voltage hang but keep checking voltage
-        while(readVoltage() < 3.0){
+        while(readVoltage() < 3.3){
             delay(30000);
         }
+        resetFunc(); //reset so start timing correctly again
       }
-      if(fftFlag==1) {
-        logFile.println();
-      }
-      logFile.close();
+      file.close();
    }
    else{
     if(printDiags) Serial.print("Log open fail.");
-    // resetFunc();
+    resetFunc();
    }
-   */
-   frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
-   if(printDiags) {
-    Serial.print("file opened: ");
-    Serial.println(frec);
-   }
-   
-   while (!frec){
-    // resetWDT();
+
+   sd.chdir(dirname);
+   Serial.println(filename);
+   while (!file.open(filename, O_WRITE | O_CREAT | O_EXCL)){
     file_count += 1;
-    sprintf(filename,"F%06d.wav",file_count); //if can't open just use count in root directory
-    if(printDiags) Serial.println(filename);
-//    logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE);
-//    logFile.print("File open failed. Retry: ");
-//    logFile.println(filename);
-//    logFile.close();
-    frec = sd.open(filename, O_WRITE | O_CREAT | O_EXCL);
-    if(file_count>1000) {
-        currentCard += 1; // try next card after many tries
-        if(currentCard==4) resetFunc(); // try starting all over
-        if(sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))) {
-          newCard = 1;
-        }
-      }
+    sprintf(filename,"F%06d.wav",file_count); //if can't open just use count
+    sd.chdir(dirname);
+    file.open(filename, O_WRITE | O_CREAT | O_EXCL);
+    Serial.println(filename);
+    delay(10);
+    if(file_count>1000) resetFunc(); // give up after many tries
    }
 
-  //intialize .wav file header
-  sprintf(wav_hdr.rId,"RIFF");
-  wav_hdr.rLen=36;
-  sprintf(wav_hdr.wId,"WAVE");
-  sprintf(wav_hdr.fId,"fmt ");
-  wav_hdr.fLen=0x10;
-  wav_hdr.nFormatTag=1;
-  wav_hdr.nChannels=1;
-  wav_hdr.nSamplesPerSec=audio_srate;
-  wav_hdr.nAvgBytesPerSec=audio_srate*2;
-  wav_hdr.nBlockAlign=2;
-  wav_hdr.nBitsPerSamples=16;
-  sprintf(wav_hdr.dId,"data");
-  wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
-  wav_hdr.dLen = nbufs_per_file * 256 * 2;
 
-  if(frec.write((uint8_t *)&wav_hdr, 44)!=44) resetFunc();
+    //intialize .wav file header
+    sprintf(wav_hdr.rId,"RIFF");
+    wav_hdr.rLen=36;
+    sprintf(wav_hdr.wId,"WAVE");
+    sprintf(wav_hdr.fId,"fmt ");
+    wav_hdr.fLen=0x10;
+    wav_hdr.nFormatTag=1;
+    wav_hdr.nChannels=1;
+    wav_hdr.nSamplesPerSec=audio_srate;
+    wav_hdr.nAvgBytesPerSec=audio_srate*2;
+    wav_hdr.nBlockAlign=2;
+    wav_hdr.nBitsPerSamples=16;
+    sprintf(wav_hdr.dId,"data");
+    wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
+    wav_hdr.dLen = nbufs_per_file * 256 * 2;
+  
+    file.write((uint8_t *)&wav_hdr, 44);
 
   Serial.print("Buffers: ");
   Serial.println(nbufs_per_file);
 }
 
 void logFileHeader(){
-  if(printDiags) Serial.print("Log file header: ");
-  File logFile;
-  if(logFile = sd.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-   Serial.print("-");
-    logFile.print("filename");
-   Serial.print("-");
-    logFile.print(",");
-    logFile.print("datetime");
-   Serial.print("-");
-    logFile.print(",");
-    logFile.print("ID");
-   Serial.print("-");
-    logFile.print(",");
-    logFile.print("gain");
-   Serial.print("-");
-    logFile.print(",");
-    logFile.print("batteryV");
-   Serial.print("-");
-    logFile.print(",");
-   Serial.print("-");
-    if(fftFlag){
-      for (int i=0; i<4; i++){
-        Serial.print("-");
-        logFile.print(bandLow[i]*binwidth);
-        logFile.print("-");
-        logFile.print(bandHigh[i]*binwidth);
-        logFile.print(",");
-      }
-      logFile.println("whistles");
-    }
-    logFile.close();
-    if(printDiags) Serial.println("Done");
-  }
-  else{
-    if(printDiags) Serial.println("Fail");
-  }
-  
-}
 
-void checkSD(){
-  filesPerCard[currentCard] -= 1;
-
-  if(printDiags){
-    Serial.print("Files per card: ");
-    Serial.println(filesPerCard[currentCard]);
-  }
-  
-  // find next card with files available
-  while(filesPerCard[currentCard] == 0){
-    resetWDT();
-    currentCard += 1;
-    newCard = 1;
-    if(currentCard == 4)  // all cards full
-    {
-      if(printDiags) Serial.println("All cards full");
-      while(1);
-    }
-
-  if(!sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))){
-       if(printDiags){
-        Serial.print("Unable to access the SD card: ");
-        Serial.println(currentCard + 1);
-        }
-    }
-    else
-      break;
-  }
-
-  if(printDiags){
-    Serial.print("Current Card: ");
-    Serial.println(currentCard + 1);
+   sd.chdir(); // only to be sure to star from root
+#if USE_SDFS==1
+  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+#else
+  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+#endif
+      file.println("filename, ID, gain (dB), Voltage, Version");
+      file.close();
   }
 }
-
 
 //This function returns the date and time for SD card file access and modify time. One needs to call in setup() to register this callback function: SdFile::dateTimeCallback(file_date_time);
 void file_date_time(uint16_t* date, uint16_t* time) 
 {
-  t = Teensy3Clock.get();
-  *date=FAT_DATE(year(t),month(t),day(t));
-  *time=FAT_TIME(hour(t),minute(t),second(t));
+  t = getTeensy3Time();
+  #if USE_SDFS==1
+    *date=FS_DATE(year(t),month(t),day(t));
+    *time=FS_TIME(hour(t),minute(t),second(t));
+  #else
+    *date=FAT_DATE(year(t),month(t),day(t));
+    *time=FAT_TIME(hour(t),minute(t),second(t));
+  #endif
 }
 
-void AudioInit(){
-    // Enable the audio shield, select input, and enable output
- // sgtl5000_1.enable();
-
+void AudioInit(int ifs){
  // Instead of using audio library enable; do custom so only power up what is needed in sgtl5000_LHI
-  audio_enable();
- 
-  //sgtl5000_1.inputSelect(myInput);
-  //sgtl5000_1.volume(0.0);
-  sgtl5000_1.lineInLevel(gainSetting);  //default = 4
-  // CHIP_ANA_ADC_CTRL
-// Actual measured full-scale peak-to-peak sine wave input for max signal
-//  0: 3.12 Volts p-p
-//  1: 2.63 Volts p-p
-//  2: 2.22 Volts p-p
-//  3: 1.87 Volts p-p
-//  4: 1.58 Volts p-p (0.79 Vpeak)
-//  5: 1.33 Volts p-p
-//  6: 1.11 Volts p-p
-//  7: 0.94 Volts p-p
-//  8: 0.79 Volts p-p (+8.06 dB)
-//  9: 0.67 Volts p-p
-// 10: 0.56 Volts p-p
-// 11: 0.48 Volts p-p
-// 12: 0.40 Volts p-p
-// 13: 0.34 Volts p-p
-// 14: 0.29 Volts p-p
-// 15: 0.24 Volts p-p
-  //sgtl5000_1.autoVolumeDisable();
- // sgtl5000_1.audioProcessorDisable();
-  switch(gainSetting){
+  I2S_modification(lhi_fsamps[ifs], 16);
+  Wire.begin();
+  audio_enable(ifs);
+}
+
+void calcGain(){
+    switch(gainSetting){
     case 0: gainDb = -20 * log10(3.12 / 2.0); break;
     case 1: gainDb = -20 * log10(2.63 / 2.0); break;
     case 2: gainDb = -20 * log10(2.22 / 2.0); break;
@@ -821,51 +736,18 @@ void AudioInit(){
     case 14: gainDb = -20 * log10(0.29 / 2.0); break;
     case 15: gainDb = -20 * log10(0.24 / 2.0); break;
   }
-  if(printDiags){
-    Serial.print("Gain dB:");
-    Serial.println(gainDb);
-  }
 }
 
-time_t getParticleTime()
+time_t getTeensy3Time()
 {
-  // request time from cell
-  unsigned char dtr;
-  int rd, wr, n;
-  char buffer[12];
-  time_t particleTime;
-
-  if(printDiags) Serial.println("Time sync");
-
-  HWSERIAL.clear();
-  HWSERIAL.write("t"); // command to request time
-  HWSERIAL.flush();
-  
-  // check if any data has arrived on the hardware serial port
-  // time out if don't get expected number of bytes within timeout
-  int timeTimeOut = 100;
-  startTime = millis();
-  while((millis()-startTime) < timeTimeOut){
-    if(HWSERIAL.available()==10){
-          // read data from the hardware serial port
-          n = HWSERIAL.readBytes((char *)buffer, 10);  
-          particleTime = atoi(buffer);
-          
-          if(printDiags){    
-            Serial.print("elapsed (ms):");
-            Serial.println(millis()-startTime);
-            Serial.print("Particle: ");
-            Serial.println(particleTime);
-          }
-          Teensy3Clock.set(particleTime);
-          lastTimeSet = particleTime;
-          return particleTime;
-    }
-  }
-  
-  return 0; // unable to get Particle time
+  return Teensy3Clock.get();
 }
 
+unsigned long processSyncMessage() {
+  unsigned long pctime = 0L;
+  const unsigned long DEFAULT_TIME = 1451606400; // Jan 1 2016
+} 
+  
 // Calculates Accurate UNIX Time Based on RTC Timestamp
 unsigned long RTCToUNIXTime(TIME_HEAD *tm){
     int i;
@@ -891,8 +773,8 @@ unsigned long RTCToUNIXTime(TIME_HEAD *tm){
     Ticks += (tm->day - 1) * SECONDS_IN_DAY;
 
     // Calculate Time Ticks CHANGES ARE HERE
-    Ticks += (ULONG)tm->hour * SECONDS_IN_HOUR;
-    Ticks += (ULONG)tm->minute * SECONDS_IN_MINUTE;
+    Ticks += (unsigned long)tm->hour * SECONDS_IN_HOUR;
+    Ticks += (unsigned long)tm->minute * SECONDS_IN_MINUTE;
     Ticks += tm->sec;
 
     return Ticks;
@@ -924,50 +806,53 @@ void read_EE(uint8_t word, uint8_t *buf, uint8_t offset)  {
 void read_myID() {
   read_EE(0xe,myID,0); // should be 04 E9 E5 xx, this being PJRC's registered OUI
   read_EE(0xf,myID,4); // xx xx xx xx
-  sprintf(myIdHex, "%02x%02x%02x%02x%02x%02x%02x%02x", myID[0], myID[1], myID[2], myID[3], myID[4], myID[5], myID[6], myID[7]);
 }
 
 float readVoltage(){
    float  voltage = 0;
    for(int n = 0; n<8; n++){
     voltage += (float) analogRead(vSense) / 1024.0;
-    delay(2);
    }
    voltage = 5.9 * voltage / 8.0;   //fudging scaling based on actual measurements; shoud be max of 3.3V at 1023
    return voltage;
 }
 
+void checkSD(){
+  if (filesPerCard[currentCard] > 0) filesPerCard[currentCard] -= 1;
 
-void cam_wake() {
-  digitalWrite(CAM_SW, HIGH);
-  delay(2000); //power on camera (if off)
-  digitalWrite(CAM_SW, LOW);     
-  CAMON = 1;   
+  if(printDiags){
+    Serial.print("Files per card: ");
+    Serial.println(filesPerCard[currentCard]);
+  }
+  
+  // find next card with files available
+  while(filesPerCard[currentCard] <= 0){
+    currentCard += 1;
+    newCard = 1;
+    if(currentCard == 4)  // all cards full
+    {
+      if(printDiags) Serial.println("All cards full");
+      while(1);
+    }
+
+  if(!sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))){
+       if(printDiags){
+        Serial.print("Unable to access the SD card: ");
+        Serial.println(currentCard + 1);
+        }
+    }
+    else
+      logFileHeader();
+      break;
+  }
+
+  if(printDiags){
+    Serial.print("Current Card: ");
+    Serial.println(currentCard + 1);
+  }
 }
 
-void cam_start() {
-  digitalWrite(CAM_SW, HIGH);
-  delay(200);  // simulate  button press
-  digitalWrite(CAM_SW, LOW);      
-  CAMON = 2;
-}
-
-void cam_stop(){
-  digitalWrite(CAM_SW, HIGH);
-  delay(200);  // simulate  button press
-  digitalWrite(CAM_SW, LOW);  
-  delay(100);
-  CAMON = 1;   
-}
-
-void cam_off() {
-  digitalWrite(CAM_SW, HIGH);
-  delay(3000); //power down camera (if still on)
-  digitalWrite(CAM_SW, LOW);      
-  CAMON = 0;
-}
-
-void checkDielTime(){
+void setDielTime(){
   unsigned int startMinutes = (startHour * 60) + (startMinute);
   unsigned int endMinutes = (endHour * 60) + (endMinute );
   unsigned int startTimeMinutes =  (hour(startTime) * 60) + (minute(startTime));
@@ -976,6 +861,8 @@ void checkDielTime(){
   tmStart.Year = year(startTime) - 1970;
   tmStart.Month = month(startTime);
   tmStart.Day = day(startTime);
+
+
   // check if next startTime is between startMinutes and endMinutes
   // e.g. 06:00 - 12:00 or 
   if(startMinutes<endMinutes){
@@ -985,13 +872,14 @@ void checkDielTime(){
        tmStart.Minute = startMinute;
        tmStart.Second = 0;
        startTime = makeTime(tmStart);
+       if(startTime < getTeensy3Time()) startTime += SECS_PER_DAY;  // make sure after current time
        Serial.print("New diel start:");
        printTime(startTime);
-       if(startTime < Teensy3Clock.get()) startTime += SECS_PER_DAY;  // make sure after current time
-       Serial.print("New diel start:");
-       printTime(startTime);
-       }
      }
+     dielRecSeconds = (endMinutes-startMinutes) * 60;
+     Serial.print("Diel Rec Seconds");
+     Serial.println(dielRecSeconds);
+  }
   else{  // e.g. 23:00 - 06:00
     if((startTimeMinutes<startMinutes) & (startTimeMinutes>endMinutes)){
       // set startTime to startHour:startMinute
@@ -999,46 +887,45 @@ void checkDielTime(){
        tmStart.Minute = startMinute;
        tmStart.Second = 0;
        startTime = makeTime(tmStart);
-       Serial.print("New diel start:");
-       printTime(startTime);
-       if(startTime < Teensy3Clock.get()) startTime += SECS_PER_DAY;  // make sure after current time
+       if(startTime < getTeensy3Time()) startTime += SECS_PER_DAY;  // make sure after current time
        Serial.print("New diel start:");
        printTime(startTime);
     }
+    dielRecSeconds = ((1440 - startMinutes) * 60) + (endMinutes * 60);
+    Serial.print("Diel Rec Seconds");
+    Serial.println(dielRecSeconds);
   }
 }
 
-// send current values to display or cell
-void summarizeSignals(){
-  Serial.println("Mean bands");
-  for (int i=0; i<4; i++){
-    if(meanBand[i]>0.00001){
-      float spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
-      spectrumLevel = spectrumLevel - hydroCal - gainDb;
-      Serial.println(spectrumLevel);
+boolean checkCamDielTime(int offsetMinutes){
+  
+  boolean startCam = 0;
+  unsigned int startMinutes = (startHour * 60) + (startMinute);
+  unsigned int endMinutes = (endHour * 60) + (endMinute );
+  unsigned int currentTimeMinutes = (hour(startTime) * 60) + minute(startTime) + offsetMinutes;
+
+  if(recMode==MODE_NORMAL) return 1;  // normal mode; always record
+
+  Serial.print("diel start Minutes");
+  Serial.println(startMinutes);
+  Serial.print("diel end Minutes");
+  Serial.println(endMinutes);
+  Serial.print("startTimeMinutes");
+  Serial.println(currentTimeMinutes);
+
+  // check if next currentTimeMinutes is between startMinutes and endMinutes
+  // e.g. 06:00 - 12:00 or 
+  if(startMinutes<endMinutes){
+    if((currentTimeMinutes >= startMinutes) & (currentTimeMinutes < endMinutes)) {
+      startCam = 1;
+      Serial.println("Start Time is within diel range 1");
     }
-     else{
-      Serial.println(meanBand[i] / fftCount);
-     }
   }
-  Serial.print("Whistles: ");
-  Serial.println(whistleCount);
-}
-
-void resetSignals(){
-  packData(); //store old data in string to send via Particle
-  for (int i=0; i<4; i++){
-    meanBand[i] = 0;
+  else{ // e.g. 23:00 - 06:00
+    if(((currentTimeMinutes >= startMinutes) & (currentTimeMinutes<(24*60))) | ((currentTimeMinutes > 0) & (currentTimeMinutes < endMinutes))) {
+      startCam = 1;
+      Serial.println("Start Time is within diel range 2");
+    }
   }
-  whistleCount = 0;
-  fftCount = 0;
-  minPeakBin = 0;
-  maxPeakBin = 0;
-}
-
-void resetWDT(){
-  noInterrupts();  //   reset WDT
-  WDOG_REFRESH = 0xA602;
-  WDOG_REFRESH = 0xB480;
-  interrupts();
+  return startCam;
 }
