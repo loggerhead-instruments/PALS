@@ -102,13 +102,14 @@ void manualSettings(){
     if(selectVal==0){
       curSetting += 1;
       if((recMode==MODE_NORMAL & curSetting>9) | (recMode==MODE_DIEL & curSetting>13)) curSetting = 0;
+      autoStartTime = Teensy3Clock.get();
     }
 
     cDisplay();
 
     t = Teensy3Clock.get();
 
-    if (t - autoStartTime > 60) startRec = 1; //autostart if no activity for 1 minutes
+    if (t - autoStartTime > 120) startRec = 1; //autostart if no activity for 1 minutes
     switch (curSetting){
       case noSet:
         if (settingsChanged) {

@@ -295,7 +295,7 @@ void setup() {
   int getTimeTimeout = 0;
   // try to get time from Particle for up to 180 seconds
   while((getParticleTime()==0) & (getTimeTimeout<180)){
-    delay(500);
+    delay(50);
     getTimeTimeout++;
   }
   Serial.print("Time status: ");
@@ -358,26 +358,26 @@ void setup() {
   //logFileHeader(); //write header to log file
   HWSERIAL.clear();
 
-
-    // Setup WDT
-    noInterrupts();                                         // don't allow interrupts while setting up WDOG
-    WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;                         // unlock access to WDOG registers
-    WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
-    delayMicroseconds(1);                                   // Need to wait a bit..
-
-    // 30 s timeout
-    // can only set this once
-    WDOG_TOVALH = 0x0CDF;
-    WDOG_TOVALL = 0xE600;
-
-  //  Tick at 7.2 MHz
-  WDOG_PRESC  = 0x400;
-
-    // Set options to enable WDT. You must always do this as a SINGLE write to WDOG_CTRLH
-    WDOG_STCTRLH |= WDOG_STCTRLH_ALLOWUPDATE |
-        WDOG_STCTRLH_WDOGEN | WDOG_STCTRLH_WAITEN |
-        WDOG_STCTRLH_STOPEN | WDOG_STCTRLH_CLKSRC;
-    interrupts();
+//
+//    // Setup WDT
+//    noInterrupts();                                         // don't allow interrupts while setting up WDOG
+//    WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;                         // unlock access to WDOG registers
+//    WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
+//    delayMicroseconds(1);                                   // Need to wait a bit..
+//
+//    // 30 s timeout
+//    // can only set this once
+//    WDOG_TOVALH = 0x0CDF;
+//    WDOG_TOVALL = 0xE600;
+//
+//  //  Tick at 7.2 MHz
+//  WDOG_PRESC  = 0x400;
+//
+//    // Set options to enable WDT. You must always do this as a SINGLE write to WDOG_CTRLH
+//    WDOG_STCTRLH |= WDOG_STCTRLH_ALLOWUPDATE |
+//        WDOG_STCTRLH_WDOGEN | WDOG_STCTRLH_WAITEN |
+//        WDOG_STCTRLH_STOPEN | WDOG_STCTRLH_CLKSRC;
+//    interrupts();
 }
 
 //
@@ -519,7 +519,7 @@ void loop() {
       }
     }
   }
-  resetWDT();
+  // resetWDT();
   asm("wfi"); // reduce power between interrupts
 }
 
@@ -590,7 +590,7 @@ void FileInit(){
    // long filename
    sprintf(filename,"%02d-%02d-%02dT%02d%02d%02d_%s_%2.1f.wav", year(t), month(t), day(t), hour(t), minute(t), second(t), myIdHex, gainDb);  //filename is DDHHMM
    while (sd.exists(filename)){
-    resetWDT();
+    // resetWDT();
     filenameIncrement++;
     sprintf(filename,"%02d%02d%02d%02d_%d.wav", day(t), hour(t), minute(t), second(t), filenameIncrement);  //filename is DDHHMM
    }
@@ -649,7 +649,7 @@ void FileInit(){
    }
    
    while (!frec){
-    resetWDT();
+    // resetWDT();
     file_count += 1;
     sprintf(filename,"F%06d.wav",file_count); //if can't open just use count in root directory
     if(printDiags) Serial.println(filename);
@@ -1042,4 +1042,3 @@ void resetWDT(){
   WDOG_REFRESH = 0xB480;
   interrupts();
 }
-
