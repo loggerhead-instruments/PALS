@@ -174,7 +174,7 @@ void manualSettings(){
    while(startRec==0){
     static int newYear, newMonth, newDay, newHour, newMinute, newSecond, oldYear, oldMonth, oldDay, oldHour, oldMinute, oldSecond;
     t = getTeensy3Time();
-    if (t - autoStartTime > 300) startRec = 1; //autostart if no activity for 5 minutes
+    if (t - autoStartTime > 300) startRec = 1; //autostart if no activity for 10 minutes
     
     
     // Check for button press
@@ -687,33 +687,16 @@ void displaySettings(){
   display.print(rec_int);
 
   display.setCursor(50, 46);
-  display.printf("%.0f",lhi_fsamps[isf]/1000.0f);
+  display.print(lhi_fsamps[isf]/1000.0f, 1);
 
   display.setCursor(75, 46);
-  display.printf("%.0f",gainDb);
+  display.print(gainDb, 1);
 
   uint32_t totalRecSeconds = 0;
 
   uint32_t fileBytes = (2 * rec_dur * lhi_fsamps[isf]) + 44;
   float fileMB = (fileBytes + 32768) / 1000.0 / 1000.0; // add cluster size so don't underestimate fileMB
   float dielFraction = 1.0; //diel mode decreases time spent recording, increases time in sleep
-  if(recMode==MODE_DIEL){
-    float dielHours, dielMinutes;
-    if(startHour>endHour){
-      dielHours = (24 - startHour) + endHour; //  22 to 05 = 7
-    }
-    else{
-      dielHours = endHour - startHour; //e.g. 10 to 12 = 2; 
-    }
-    if(startMinute > endMinute){
-      dielMinutes = (60-startMinute) + endMinute;
-    }
-    else{
-      dielMinutes = endMinute - startMinute;
-    }
-    dielMinutes += (dielHours * 60);
-    dielFraction = dielMinutes / (24.0 * 60.0); // fraction of day recording in diel mode
-  }
 
   float recDraw = mAmpRec + ((float) camFlag * mAmpCam);
   float recFraction = ((float) rec_dur * dielFraction) / (float) (rec_dur + rec_int);
@@ -722,26 +705,10 @@ void displaySettings(){
   if(camFlag & recMode==MODE_DIEL){
     float audioOnlyFraction = (1.0-dielFraction) * ((float) rec_dur / (float) (rec_dur + rec_int));
     avgCurrentDraw = (recDraw * recFraction) + (mAmpSleep * sleepFraction) + (mAmpRec * audioOnlyFraction); // this will overestimate because counting sleep twice
-//    Serial.print("Audio only fraction: ");
-//    Serial.println(audioOnlyFraction);
   }
-
-//  Serial.print("Rec Fraction Sleep Fraction Avg Power:");
-//  Serial.print(rec_dur);
-//  Serial.print("  ");
-//  Serial.print(recFraction);
-//  Serial.print("  ");
-//  Serial.print(rec_int);
-//  Serial.print("  ");
-//  Serial.print(sleepFraction);
-//  Serial.print("  ");
-//  Serial.println(avgCurrentDraw);
 
 
   uint32_t powerSeconds = uint32_t (3600.0 * (nBatPacks * mAhPerBat / avgCurrentDraw));
-
-//  Serial.print("fileMB FreeMBCards totalRecSeconds: ");
-//  Serial.print(fileMB); Serial.print(" ");
 
   for(int n=0; n<4; n++){
     filesPerCard[n] = 0;
@@ -768,22 +735,13 @@ void displaySettings(){
   float totalSecondsMemory = totalRecSeconds / recFraction;
   float totalSecondsCamMemory = 43200 / recFraction;
  
-  if(powerSeconds < totalSecondsMemory){
-   // displayClock(getTeensy3Time() + powerSeconds, 45, 0);
-    display.setCursor(92, 38);
-    display.print("Lim B");
-    display.setCursor(92, 46);
-    display.print((int) powerSeconds / 86400);
-    display.print("d");
-  }
-  else{
   //  displayClock(getTeensy3Time() + totalRecSeconds + totalSleepSeconds, 45, 0);
-    display.setCursor(92, 38);
-    display.print("Lim B");
-    display.setCursor(92, 46);
+    display.setCursor(95, 38);
+    display.print("Limit");
+    display.setCursor(95, 46);
     display.print((int)totalSecondsMemory / 86400);
     display.print("d");
-  }
+ 
 
   display.setCursor(115, BOTTOM);
   if(recMode==MODE_DIEL){

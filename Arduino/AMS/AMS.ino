@@ -348,6 +348,7 @@ void setup() {
 
   AudioInit(isf); // load current gain setting
   manualSettings();
+  if(printDiags) Serial.print("Manual settings complete");
   audio_srate = lhi_fsamps[isf];
   AudioInit(isf); // set with new settings
 
