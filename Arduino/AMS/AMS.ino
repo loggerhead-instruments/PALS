@@ -17,12 +17,14 @@
 //*****************************************************************************************
 
 char codeVersion[12] = "2020-01-16";
-static boolean printDiags = 0;  // 1: serial print diagnostics; 0: no diagnostics
+static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
 #define MQ 100 // to be used with LHI record queue (modified local version)
 int roundSeconds = 60;//start time modulo to nearest roundSeconds
 int wakeahead = 5;  //wake from snooze to give hydrophone and camera time to power up
 int noDC = 0; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
+float hydroCal = -180.0;
+int fftFlag = 1;
 //*****************************************************************************************
 
 
@@ -71,8 +73,10 @@ unsigned long baud = 115200;
 
 // GUItool: begin automatically generated code
 AudioInputI2S            i2s2;           //xy=105,63
+AudioAnalyzeFFT256       fft256_1;
 LHIRecordQueue           queue1;         //xy=281,63
 AudioConnection          patchCord1(i2s2, 0, queue1, 0);
+AudioConnection          patchCord(i2s2, 0, fft256_1, 0);
 AudioControlSGTL5000     sgtl5000_1;     //xy=265,212
 // GUItool: end automatically generated code
 
@@ -221,6 +225,28 @@ HdrStruct wav_hdr;
 
 unsigned char prev_dtr = 0;
 
+// define bands to measure acoustic signals
+int fftPoints = 256; // 5.8 ms at 44.1 kHz
+float binwidth = audio_srate / fftPoints; //256 point FFT; = 172.3 Hz for 44.1kHz
+float fftDurationMs = 1000.0 / binwidth;
+long fftCount;
+float meanBand[4]; // mean band valuesd
+int bandLow[4]; // band low frequencies
+int bandHigh[4];
+int nBins[4]; // number of FFT bins in each band
+int whistleCount = 0;
+int whistleLow = (int) 5000.0 / binwidth; // low frequency bin to start looking for whistles
+int whistleHigh = (int) 16000.0 / binwidth; // high frequency bin to stop looking for whistles
+int oldPeakBin; //for keeping track of peak frequency
+int whistleDelta = 500.0 / binwidth;  // adajcent bins need to be within x Hz of each other to add to runLength
+int runLength = 0;
+int minRunLength = 300.0 / fftDurationMs; // minimium run length to count as whistle
+int fmThreshold = (int) 1000.0 / binwidth; // candidate whistle must cover this number of bins
+int minPeakBin; // minimum frequency in a run length use to make sure whistle crosses enough bins
+int maxPeakBin; // maximum frequency in a run length use to make sure whistle crosses enough bins
+String dataPacket; // data packed for Particle transmission after each file
+
+
 struct TIME_HEAD
 {
   byte  sec;  
@@ -293,14 +319,10 @@ void setup() {
   delay(140);
   cDisplay();
   display.println("Loggerhead");
-  display.display();
-
-
-  cDisplay();
-  display.println("Loggerhead");
   display.setTextSize(1);
   display.println("Getting Cell Time");
   display.display();
+
   
   // setSyncProvider does not seem to work...so doing manually from within loop to update time
   //setSyncProvider(getParticleTime); //get RTC from Particle cell when available
@@ -387,6 +409,9 @@ void setup() {
 int recLoopCount;  //for debugging when does not start record
   
 void loop() {
+  
+  if(fftFlag) checkSerial(); // see if packet of data is being requested by Particle
+  
   // Standby mode
   if(mode == 0)
   {
@@ -463,6 +488,60 @@ void loop() {
   if (mode == 1) {
     continueRecording();  // download data  
 
+    //
+    // Automated signal processing
+    //
+    if(fftFlag & fft256_1.available()){
+      
+      // whistle detection
+      float maxV = fft256_1.read(whistleLow);
+      float newV;
+      int peakBin;
+
+      // find peak frequency
+      for(int i=whistleLow+1; i<whistleHigh; i++){
+        newV = fft256_1.read(i);
+        if (newV > maxV){
+          maxV = newV;
+          peakBin = i;
+        }
+      }
+
+      // track minimum and maximum peakBins during run
+      if((peakBin < minPeakBin) | (minPeakBin==0)) minPeakBin = peakBin; 
+      if((peakBin > maxPeakBin) | (maxPeakBin==0)) maxPeakBin = peakBin;
+
+      // increment runLength if new peak is withing whistleDelta of old peak
+      if(abs(peakBin - oldPeakBin) < whistleDelta){
+        runLength += 1;
+      }
+      else{  // end of run, check if long enough and covered enough frequency bins
+        if((runLength >= minRunLength) & (maxPeakBin - minPeakBin > fmThreshold)) {
+          if (printDiags){
+            Serial.print(runLength * fftDurationMs);
+            Serial.print(" ");
+          }
+          whistleCount++;
+        }
+        runLength = 1;
+        maxPeakBin = 0; // reset peak bins after end of run
+        minPeakBin = 0;
+      }
+      oldPeakBin = peakBin;
+
+      // calculate band level noise
+      fftCount += 1;  // counter to divide meanBand by before sending to cell
+      for(int n=0; n<4; n++){
+        for(int i=bandLow[n]; i<bandHigh[n]; i++){
+          meanBand[n] += (fft256_1.read(i) / nBins[n]); // accumulate across band
+        }
+      }
+    }
+    //
+    // End automated signal processing
+    //
+
+
     if(digitalRead(UP)==0 & digitalRead(DOWN)==0){
       // stop recording
       queue1.end();
@@ -489,14 +568,17 @@ void loop() {
         checkSD();
         FileInit();  // make a new file
         buf_count = 0;
+        if(fftFlag) resetSignals();
         if(printDiags) {
           Serial.print("Audio Mem: ");
           Serial.println(AudioMemoryUsageMax());
         }
       }
       else{
+        if(fftFlag) summarizeSignals();
         stopRecording();
         checkSD();
+        if(fftFlag) resetSignals();
         long ss = startTime - getTeensy3Time() - wakeahead;
         if (ss<0) ss=0;
         snooze_hour = floor(ss/3600);
@@ -985,4 +1067,32 @@ time_t getParticleTime()
   }
   
   return 0; // unable to get Particle time
+}
+
+// send current values to display or cell
+void summarizeSignals(){
+  Serial.println("Mean bands");
+  for (int i=0; i<4; i++){
+    if(meanBand[i]>0.00001){
+      float spectrumLevel = 20*log10(meanBand[i] / fftCount) - (10 * log10(binwidth));
+      spectrumLevel = spectrumLevel - hydroCal - gainDb;
+      Serial.println(spectrumLevel);
+    }
+     else{
+      Serial.println(meanBand[i] / fftCount);
+     }
+  }
+  Serial.print("Whistles: ");
+  Serial.println(whistleCount);
+}
+
+void resetSignals(){
+  packData(); //store old data in string to send via Particle
+  for (int i=0; i<4; i++){
+    meanBand[i] = 0;
+  }
+  whistleCount = 0;
+  fftCount = 0;
+  minPeakBin = 0;
+  maxPeakBin = 0;
 }

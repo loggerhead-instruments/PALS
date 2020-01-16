@@ -174,7 +174,7 @@ void manualSettings(){
    while(startRec==0){
     static int newYear, newMonth, newDay, newHour, newMinute, newSecond, oldYear, oldMonth, oldDay, oldHour, oldMinute, oldSecond;
     t = getTeensy3Time();
-    if (t - autoStartTime > 600) startRec = 1; //autostart if no activity for 10 minutes
+    if (t - autoStartTime > 300) startRec = 1; //autostart if no activity for 5 minutes
     
     
     // Check for button press
