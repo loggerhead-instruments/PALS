@@ -20,18 +20,21 @@ char codeVersion[12] = "2020-01-16";
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
 #define MQ 100 // to be used with LHI record queue (modified local version)
-int roundSeconds = 300;//start time modulo to nearest roundSeconds
+int roundSeconds = 30;//start time modulo to nearest roundSeconds
 int wakeahead = 5;  //wake from snooze to give hydrophone and camera time to power up
 int noDC = 0; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
 float hydroCal = -180.0;
 int fftFlag = 1;
+long rec_dur = 300;
+long rec_int = 0;
 //*****************************************************************************************
 
-
+#include "input_i2s.h"
 #include "LHI_record_queue.h"
 #include "control_sgtl5000.h"
+#include <analyze_fft256.h>
 
-#include <Audio.h>  //this also includes SD.h from lines 89 & 90
+//#include <Audio.h>  //this also includes SD.h from lines 89 & 90
 
 #include <Wire.h>
 #include <SPI.h>
@@ -75,8 +78,8 @@ unsigned long baud = 115200;
 AudioInputI2S            i2s2;           //xy=105,63
 AudioAnalyzeFFT256       fft256_1;
 LHIRecordQueue           queue1;         //xy=281,63
-AudioConnection          patchCord1(i2s2, 0, queue1, 0);
 AudioConnection          patchCord(i2s2, 0, fft256_1, 0);
+AudioConnection          patchCord1(i2s2, 0, queue1, 0);
 AudioControlSGTL5000     sgtl5000_1;     //xy=265,212
 // GUItool: end automatically generated code
 
@@ -140,15 +143,14 @@ int32_t lhi_fsamps[9] = {8000, 16000, 32000, 44100, 48000, 96000, 200000, 250000
 #define I_SAMP 8   // 0 is 8 kHz; 1 is 16 kHz; 2 is 32 kHz; 3 is 44.1 kHz; 4 is 48 kHz; 5 is 96 kHz; 6 is 192 kHz
 
 float audio_srate = lhi_fsamps[I_SAMP];
-int isf = 4; // default to 48 kHz
+int isf = 3; // default to 48 kHz
 
 //WMXZ float audioIntervalSec = 256.0 / audio_srate; //buffer interval in seconds
 //WMXZ unsigned int audioIntervalCount = 0;
 float gainDb;
 
 int recMode = MODE_NORMAL;
-long rec_dur = 10;
-long rec_int = 30;
+
 
 int snooze_hour;
 int snooze_minute;
@@ -492,8 +494,7 @@ void loop() {
     //
     // Automated signal processing
     //
-    if(fftFlag & fft256_1.available()){
-    
+    if(fft256_1.available()){
       
       // whistle detection
       float maxV = fft256_1.read(whistleLow);
@@ -637,7 +638,45 @@ void startRecording() {
   if (printDiags)  Serial.println("Queue Begin");
 }
 
+//// medusa style buffer handling
+//void continueRecording() {
+//  byte sampleBuffer[512]; // data to write
+//    // Fetch 2 blocks from the audio library and copy
+//    // into a 512 byte buffer.  The Arduino SD library
+//    // is most efficient when full 512 byte sector size
+//    // writes are used.
+//    // one buffer is 512 bytes = 256 samples
+//    // readBuffer returns an int16 *
+//    if(queue1.available() >= 2) {
+////      #ifdef ONECHAN
+//        buf_count += 1;
+//        memcpy(sampleBuffer, queue1.readBuffer(), 256);
+//        queue1.freeBuffer();
+//        memcpy(sampleBuffer+256, queue1.readBuffer(), 256);
+//        queue1.freeBuffer();
+////      #endif
+////      #ifdef TWOCHAN
+////          buf_count += 1;
+////          mxLR(sampleBuffer, queue1.readBuffer(), queue2.readBuffer()); // interleave 
+////          queue1.freeBuffer(); 
+////          queue2.freeBuffer();  // free buffer
+////      #endif
+////
+////      // time domain processing of audio buffer
+////      for(int i=0; i<512; i+=2){
+////        int16_t sample = (int16_t) sampleBuffer[i+1]<<8 | sampleBuffer[i];
+////        if(sample > posPeak) posPeak = sample;
+////        if(sample < negPeak) negPeak = sample;
+////        float floatSample = sample / 32768.0;
+////        sumOfSquares += (floatSample * floatSample);
+////      }
+////      sumOfSquaresCount += 256;
+//      
+//      file.write(sampleBuffer, 512); //audio to .wav file
+//    }
+//}
 
+// LS1 style buffer handling
 byte buffer[NREC*512];
 void continueRecording() {
   if (queue1.available() >= NREC*2) {

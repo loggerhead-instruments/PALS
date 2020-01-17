@@ -56,7 +56,7 @@ void printZero(int val){
 
 void manualSettings(){
   boolean startRec = 0, startUp, startDown;
-  readEEPROM();
+ // readEEPROM();
   calcGain();
 
   autoStartTime = getTeensy3Time();
@@ -130,11 +130,11 @@ void manualSettings(){
     // make sure settings valid (if EEPROM corrupted or not set yet)
   
   if (rec_dur < 0 | rec_dur>100000) {
-    rec_dur = 60;
+    rec_dur = 300;
     writeEEPROMlong(0, rec_dur);  //long
   }
   if (rec_int<0 | rec_int>100000) {
-    rec_int = 60;
+    rec_int = 0;
     writeEEPROMlong(4, rec_int);  //long
   }
   if (startHour<0 | startHour>23) {
