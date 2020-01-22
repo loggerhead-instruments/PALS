@@ -74,13 +74,16 @@ unsigned long baud = 115200;
 #define MODE_NORMAL 0
 #define MODE_DIEL 1
 
+
 // GUItool: begin automatically generated code
-AudioInputI2S            i2s2;           //xy=105,63
-AudioAnalyzeFFT256       fft256_1;
-LHIRecordQueue           queue1;         //xy=281,63
-AudioConnection          patchCord2(i2s2, 0, queue1, 0);
-AudioConnection          patchCord1(i2s2, 0, fft256_1, 0);
-AudioControlSGTL5000     sgtl5000_1;     //xy=265,212
+AudioInputI2S            i2s1;           //xy=115,250
+LHIRecordQueue         queue1;         //xy=302,247
+AudioAnalyzeFFT256       fft256_1;       //xy=339,301
+AudioConnection          patchCord1(i2s1, 0, queue1, 0);
+AudioConnection          patchCord2(i2s1, 0, fft256_1, 0);
+AudioControlSGTL5000     sgtl5000_1;     //xy=148,326
+// GUItool: end automatically generated code
+
 // GUItool: end automatically generated code
 
 const int myInput = AUDIO_INPUT_LINEIN;
