@@ -16,16 +16,16 @@
 
 //*****************************************************************************************
 
-char codeVersion[12] = "2020-01-16";
+char codeVersion[12] = "2020-07-29";
 static boolean printDiags = 1;  // 1: serial print diagnostics; 0: no diagnostics
 int camFlag = 0;
 #define MQ 100 // to be used with LHI record queue (modified local version)
 int roundSeconds = 30;//start time modulo to nearest roundSeconds
 int wakeahead = 5;  //wake from snooze to give hydrophone and camera time to power up
-int noDC = 0; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
+int noDC = 1; // 0 = freezeDC offset; 1 = remove DC offset; 2 = bypass
 float hydroCal = -180.0;
 int fftFlag = 1;
-long rec_dur = 60;
+long rec_dur = 300;
 long rec_int = 0;
 //*****************************************************************************************
 
@@ -38,7 +38,7 @@ long rec_int = 0;
 
 #include <Wire.h>
 #include <SPI.h>
-#include "SdFat.h"
+//#include "SdFat.h"
 
 
 #include <Snooze.h>  //using https://github.com/duff2013/Snooze; uncomment line 62 #define USE_HIBERNATE
@@ -194,21 +194,21 @@ const bool PRE_ALLOCATE = true;
 // be avoid by writing a file header or reading the first record.
 const bool SKIP_FIRST_LATENCY = true;
 
-#if SD_FAT_TYPE == 0
-SdFat sd;
-File file;
-#elif SD_FAT_TYPE == 1
-SdFat32 sd;
-File32 file;
-#elif SD_FAT_TYPE == 2
-SdExFat sd;
-ExFile file;
-#elif SD_FAT_TYPE == 3
-SdFs sd;
-FsFile file;
-#else  // SD_FAT_TYPE
-#error Invalid SD_FAT_TYPE
-#endif  // SD_FAT_TYPE
+//#if SD_FAT_TYPE == 0
+//SdFat sd;
+//File file;
+//#elif SD_FAT_TYPE == 1
+//SdFat32 sd;
+//File32 file;
+//#elif SD_FAT_TYPE == 2
+//SdExFat sd;
+//ExFile file;
+//#elif SD_FAT_TYPE == 3
+//SdFs sd;
+//FsFile file;
+//#else  // SD_FAT_TYPE
+//#error Invalid SD_FAT_TYPE
+//#endif  // SD_FAT_TYPE
 
 typedef struct {
     char    rId[4];
@@ -352,12 +352,12 @@ void setup() {
 //WMXZ  audioIntervalSec = 256.0 / audio_srate; //buffer interval in seconds
 
   AudioInit(isf); // load current gain setting
-  manualSettings();
+  // manualSettings();
   if(printDiags) Serial.print("Manual settings complete");
   audio_srate = lhi_fsamps[isf];
   AudioInit(isf); // set with new settings
 
-  logFileHeader();
+  // logFileHeader();
   
   cDisplay();
 
@@ -405,7 +405,7 @@ void setup() {
 
   // create first folder to hold data
   folderMonth = -1;  //set to -1 so when first file made will create directory
-  checkSD();
+  // checkSD();
 }
 
 //
@@ -554,9 +554,9 @@ void loop() {
       // update wav file header
       wav_hdr.rLen = 36 + buf_count * 256 * 2;
       wav_hdr.dLen = buf_count * 256 * 2;
-      file.seek(0);
-      file.write((uint8_t *)&wav_hdr, 44);
-      file.close();
+//      file.seek(0);
+//      file.write((uint8_t *)&wav_hdr, 44);
+//      file.close();
       if(camFlag) cam_off(); //camera off
       display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  //initialize display
       delay(100);
@@ -570,9 +570,9 @@ void loop() {
     
     if(buf_count >= nbufs_per_file){       // time to stop?
       if(((rec_int == 0) & (recMode==MODE_NORMAL)) | ((rec_int == 0) & (recMode==MODE_DIEL) & (getTeensy3Time()<stopTime))){
-        file.close();
-        checkSD();
-        FileInit();  // make a new file
+      //  file.close();
+      //  checkSD();
+      //  FileInit();  // make a new file
         buf_count = 0;
         if(fftFlag) resetSignals();
         if(printDiags) {
@@ -583,7 +583,7 @@ void loop() {
       else{
         if(fftFlag) summarizeSignals();
         stopRecording();
-        checkSD();
+      //  checkSD();
         if(fftFlag) resetSignals();
         long ss = startTime - getTeensy3Time() - wakeahead;
         if (ss<0) ss=0;
@@ -635,7 +635,7 @@ void loop() {
 
 void startRecording() {
   if (printDiags)  Serial.println("startRecording");
-  FileInit();
+ // FileInit();
   buf_count = 0;
   queue1.begin();
   if (printDiags)  Serial.println("Queue Begin");
@@ -647,7 +647,7 @@ void startRecording() {
 //    // Fetch 2 blocks from the audio library and copy
 //    // into a 512 byte buffer.  The Arduino SD library
 //    // is most efficient when full 512 byte sector size
-//    // writes are used.
+//    // writes are used
 //    // one buffer is 512 bytes = 256 samples
 //    // readBuffer returns an int16 *
 //    if(queue1.available() >= 2) {
@@ -695,7 +695,7 @@ void continueRecording() {
       memcpy(ptr+256, queue1.readBuffer(), 256);
       queue1.freeBuffer();
     }
-    if(file.write(buffer, NREC*512)==-1) resetFunc(); //audio to .wav file
+  //  file.write(buffer, NREC*512); //audio to .wav file
       
     buf_count += NREC;
 //WMXZ    audioIntervalCount += NREC;
@@ -716,142 +716,142 @@ void stopRecording() {
   //queue1.clear();
   AudioMemoryUsageMaxReset();
   //file.timestamp(T_WRITE,(uint16_t) year(t),month(t),day(t),hour(t),minute(t),second);
-  file.close();
+  // file.close();
   delay(100);
 }
 
 
-void FileInit()
-{
-   t = getTeensy3Time();
-   
-   if (folderMonth != month(t)){
-    if(printDiags) Serial.println("New Folder");
-    folderMonth = month(t);
-    sprintf(dirname, "/%04d-%02d", year(t), folderMonth);
-    #if USE_SDFS==1
-      FsDateTime::callback = file_date_time;
-    #else
-      SdFile::dateTimeCallback(file_date_time);
-    #endif
-    sd.mkdir(dirname);
-   }
-   pinMode(vSense, INPUT);  // get ready to read voltage
-
-   // open file 
-   sd.chdir(dirname);
-   sprintf(filename,"%04d%02d%02dT%02d%02d%02d.wav", year(t), month(t), day(t), hour(t), minute(t), second(t));  //filename is DDHHMMSS
-
-
-   // log file
-  #if USE_SDFS==1
-    FsDateTime::callback = file_date_time;
-  #else
-    SdFile::dateTimeCallback(file_date_time);
-  #endif
-
-   float voltage = readVoltage();
-   
-  sd.chdir(); // only to be sure to start from root
-  #if USE_SDFS==1
-    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-  #else
-    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-  #endif
-      file.print(filename);
-      file.print(',');
-      for(int n=0; n<8; n++){
-        file.print(myID[n]);
-      }
-      file.print(',');
-      file.print(gainDb); 
-      file.print(',');
-      file.print(voltage); 
-      file.print(',');
-      file.println(codeVersion);
-      if(voltage < 3.1){
-        if (camFlag){
-          cam_off();
-          camFlag = 0;
-          file.println("Camera off.");
-        }
-      }
-      if(voltage < 3.0){
-        file.println("Stopping because Voltage less than 3.0 V");
-        file.close();  
-        // low voltage hang but keep checking voltage
-        while(readVoltage() < 3.3){
-            delay(30000);
-        }
-        resetFunc(); //reset so start timing correctly again
-      }
-      file.close();
-   }
-   else{
-    if(printDiags) Serial.print("Log open fail.");
-    resetFunc();
-   }
-
-   sd.chdir(dirname);
-   Serial.println(filename);
-   while (!file.open(filename, O_WRITE | O_CREAT | O_EXCL)){
-    file_count += 1;
-    sprintf(filename,"F%06d.wav",file_count); //if can't open just use count
-    sd.chdir(dirname);
-    file.open(filename, O_WRITE | O_CREAT | O_EXCL);
-    Serial.println(filename);
-    delay(10);
-    if(file_count>1000) resetFunc(); // give up after many tries
-   }
-
-
-    //intialize .wav file header
-    sprintf(wav_hdr.rId,"RIFF");
-    wav_hdr.rLen=36;
-    sprintf(wav_hdr.wId,"WAVE");
-    sprintf(wav_hdr.fId,"fmt ");
-    wav_hdr.fLen=0x10;
-    wav_hdr.nFormatTag=1;
-    wav_hdr.nChannels=1;
-    wav_hdr.nSamplesPerSec=audio_srate;
-    wav_hdr.nAvgBytesPerSec=audio_srate*2;
-    wav_hdr.nBlockAlign=2;
-    wav_hdr.nBitsPerSamples=16;
-    sprintf(wav_hdr.dId,"data");
-    wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
-    wav_hdr.dLen = nbufs_per_file * 256 * 2;
-  
-    file.write((uint8_t *)&wav_hdr, 44);
-
-  Serial.print("Buffers: ");
-  Serial.println(nbufs_per_file);
-}
-
-void logFileHeader(){
-
-   sd.chdir(); // only to be sure to star from root
-#if USE_SDFS==1
-  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-#else
-  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
-#endif
-      file.println("filename, ID, gain (dB), Voltage, Version");
-      file.close();
-  }
-}
-
-//This function returns the date and time for SD card file access and modify time. One needs to call in setup() to register this callback function: SdFile::dateTimeCallback(file_date_time);
-void file_date_time(uint16_t* date, uint16_t* time) 
-{
-  t = getTeensy3Time();
-  #if USE_SDFS==1
-    *date=FS_DATE(year(t),month(t),day(t));
-    *time=FS_TIME(hour(t),minute(t),second(t));
-  #else
-    *date=FAT_DATE(year(t),month(t),day(t));
-    *time=FAT_TIME(hour(t),minute(t),second(t));
-  #endif
-}
+//void FileInit()
+//{
+//   t = getTeensy3Time();
+//   
+//   if (folderMonth != month(t)){
+//    if(printDiags) Serial.println("New Folder");
+//    folderMonth = month(t);
+//    sprintf(dirname, "/%04d-%02d", year(t), folderMonth);
+//    #if USE_SDFS==1
+//      FsDateTime::callback = file_date_time;
+//    #else
+//      SdFile::dateTimeCallback(file_date_time);
+//    #endif
+//    sd.mkdir(dirname);
+//   }
+//   pinMode(vSense, INPUT);  // get ready to read voltage
+//
+//   // open file 
+//   sd.chdir(dirname);
+//   sprintf(filename,"%04d%02d%02dT%02d%02d%02d.wav", year(t), month(t), day(t), hour(t), minute(t), second(t));  //filename is DDHHMMSS
+//
+//
+//   // log file
+//  #if USE_SDFS==1
+//    FsDateTime::callback = file_date_time;
+//  #else
+//    SdFile::dateTimeCallback(file_date_time);
+//  #endif
+//
+//   float voltage = readVoltage();
+//   
+//  sd.chdir(); // only to be sure to start from root
+//  #if USE_SDFS==1
+//    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+//  #else
+//    if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+//  #endif
+//      file.print(filename);
+//      file.print(',');
+//      for(int n=0; n<8; n++){
+//        file.print(myID[n]);
+//      }
+//      file.print(',');
+//      file.print(gainDb); 
+//      file.print(',');
+//      file.print(voltage); 
+//      file.print(',');
+//      file.println(codeVersion);
+//      if(voltage < 3.1){
+//        if (camFlag){
+//          cam_off();
+//          camFlag = 0;
+//          file.println("Camera off.");
+//        }
+//      }
+//      if(voltage < 3.0){
+//        file.println("Stopping because Voltage less than 3.0 V");
+//        file.close();  
+//        // low voltage hang but keep checking voltage
+//        while(readVoltage() < 3.3){
+//            delay(30000);
+//        }
+//        resetFunc(); //reset so start timing correctly again
+//      }
+//      file.close();
+//   }
+//   else{
+//    if(printDiags) Serial.print("Log open fail.");
+//    resetFunc();
+//   }
+//
+//   sd.chdir(dirname);
+//   Serial.println(filename);
+//   while (!file.open(filename, O_WRITE | O_CREAT | O_EXCL)){
+//    file_count += 1;
+//    sprintf(filename,"F%06d.wav",file_count); //if can't open just use count
+//    sd.chdir(dirname);
+//    file.open(filename, O_WRITE | O_CREAT | O_EXCL);
+//    Serial.println(filename);
+//    delay(10);
+//    if(file_count>1000) resetFunc(); // give up after many tries
+//   }
+//
+//
+//    //intialize .wav file header
+//    sprintf(wav_hdr.rId,"RIFF");
+//    wav_hdr.rLen=36;
+//    sprintf(wav_hdr.wId,"WAVE");
+//    sprintf(wav_hdr.fId,"fmt ");
+//    wav_hdr.fLen=0x10;
+//    wav_hdr.nFormatTag=1;
+//    wav_hdr.nChannels=1;
+//    wav_hdr.nSamplesPerSec=audio_srate;
+//    wav_hdr.nAvgBytesPerSec=audio_srate*2;
+//    wav_hdr.nBlockAlign=2;
+//    wav_hdr.nBitsPerSamples=16;
+//    sprintf(wav_hdr.dId,"data");
+//    wav_hdr.rLen = 36 + nbufs_per_file * 256 * 2;
+//    wav_hdr.dLen = nbufs_per_file * 256 * 2;
+//  
+//    file.write((uint8_t *)&wav_hdr, 44);
+//
+//  Serial.print("Buffers: ");
+//  Serial.println(nbufs_per_file);
+//}
+//
+//void logFileHeader(){
+//
+//   sd.chdir(); // only to be sure to star from root
+//#if USE_SDFS==1
+//  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+//#else
+//  if(file.open("LOG.CSV",  O_CREAT | O_APPEND | O_WRITE)){
+//#endif
+//      file.println("filename, ID, gain (dB), Voltage, Version");
+//      file.close();
+//  }
+//}
+//
+////This function returns the date and time for SD card file access and modify time. One needs to call in setup() to register this callback function: SdFile::dateTimeCallback(file_date_time);
+//void file_date_time(uint16_t* date, uint16_t* time) 
+//{
+//  t = getTeensy3Time();
+//  #if USE_SDFS==1
+//    *date=FS_DATE(year(t),month(t),day(t));
+//    *time=FS_TIME(hour(t),minute(t),second(t));
+//  #else
+//    *date=FAT_DATE(year(t),month(t),day(t));
+//    *time=FAT_TIME(hour(t),minute(t),second(t));
+//  #endif
+//}
 
 void AudioInit(int ifs){
  // Instead of using audio library enable; do custom so only power up what is needed in sgtl5000_LHI
@@ -961,40 +961,40 @@ float readVoltage(){
    return voltage;
 }
 
-void checkSD(){
-  if (filesPerCard[currentCard] > 0) filesPerCard[currentCard] -= 1;
-
-  if(printDiags){
-    Serial.print("Files per card: ");
-    Serial.println(filesPerCard[currentCard]);
-  }
-  
-  // find next card with files available
-  while(filesPerCard[currentCard] <= 0){
-    currentCard += 1;
-    newCard = 1;
-    if(currentCard == 4)  // all cards full
-    {
-      if(printDiags) Serial.println("All cards full");
-      while(1);
-    }
-
-  if(!sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))){
-       if(printDiags){
-        Serial.print("Unable to access the SD card: ");
-        Serial.println(currentCard + 1);
-        }
-    }
-    else
-      logFileHeader();
-      break;
-  }
-
-  if(printDiags){
-    Serial.print("Current Card: ");
-    Serial.println(currentCard + 1);
-  }
-}
+//void checkSD(){
+//  if (filesPerCard[currentCard] > 0) filesPerCard[currentCard] -= 1;
+//
+//  if(printDiags){
+//    Serial.print("Files per card: ");
+//    Serial.println(filesPerCard[currentCard]);
+//  }
+//  
+//  // find next card with files available
+//  while(filesPerCard[currentCard] <= 0){
+//    currentCard += 1;
+//    newCard = 1;
+//    if(currentCard == 4)  // all cards full
+//    {
+//      if(printDiags) Serial.println("All cards full");
+//      while(1);
+//    }
+//
+//  if(!sd.begin(chipSelect[currentCard], SD_SCK_MHZ(50))){
+//       if(printDiags){
+//        Serial.print("Unable to access the SD card: ");
+//        Serial.println(currentCard + 1);
+//        }
+//    }
+//    else
+//      logFileHeader();
+//      break;
+//  }
+//
+//  if(printDiags){
+//    Serial.print("Current Card: ");
+//    Serial.println(currentCard + 1);
+//  }
+//}
 
 void setDielTime(){
   unsigned int startMinutes = (startHour * 60) + (startMinute);
