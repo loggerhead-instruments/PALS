@@ -453,7 +453,7 @@ void continueRecording() {
     buf_count += 1;
     audioIntervalCount += 1;
 
-    Serial.print((int16_t) buffer[1]<<8 | buffer[0]);
+//    Serial.print((int16_t) buffer[1]<<8 | buffer[0]);
 //    
 //    if(printDiags){
 //      Serial.print(".");
