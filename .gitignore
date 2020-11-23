@@ -1,2 +1,6 @@
 
 python/.DS_Store
+*.Zip
+*.pk
+*.SchDocPreview
+*.LOG
